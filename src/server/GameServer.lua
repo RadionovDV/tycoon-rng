@@ -9,6 +9,7 @@ local RollService = require(module.RollService)
 local CombatService = require(module.CombatService)
 local UpgradeService = require(module.UpgradeService)
 local LocationService = require(module.LocationService)
+local PetEquipService = require(module.PetEquipService)
 
 local GameServer = {
 	Services = {
@@ -18,12 +19,14 @@ local GameServer = {
 		CombatService = CombatService,
 		UpgradeService = UpgradeService,
 		LocationService = LocationService,
+		PetEquipService = PetEquipService,
 	},
 }
 
 -- Start order: data system first, then listeners, then combat loop
 PlayerService.Start()
 RollService.StartListening()
+PetEquipService.StartListening()
 UpgradeService.StartListening()
 LocationService.StartListening()
 CombatService.Start()

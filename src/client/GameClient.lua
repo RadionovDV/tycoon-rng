@@ -16,42 +16,43 @@ local BackpackController = require(module.BackpackController)
 PlayerDataClient.start()
 
 if not PlayerDataClient.hasLoaded() then
-	PlayerDataClient.loaded:Wait()
+    PlayerDataClient.loaded:Wait()
 end
 
 local GameClient = {
-	Controllers = {
-		EconomyController = EconomyController,
-		RollController = RollController,
-		CombatController = CombatController,
-		UpgradeController = UpgradeController,
-		LocationController = LocationController,
-		BackpackController = BackpackController,
-	},
+    Controllers = {
+        EconomyController = EconomyController,
+        RollController = RollController,
+        CombatController = CombatController,
+        UpgradeController = UpgradeController,
+        LocationController = LocationController,
+        BackpackController = BackpackController,
+    },
 }
 
 -- React to any server-side data change and update relevant UI
 PlayerDataClient.updated:Connect(function(valueName, value)
-	if valueName == "coins" or valueName == "rocks" or valueName == "dice" then
-		EconomyController.UpdateDisplay()
-	elseif valueName == "upgrades" then
-		UpgradeController.UpdateNotifications()
-	elseif valueName == "pets" then
-		BackpackController.Refresh()
-	elseif valueName == "equippedPets" then
-		CombatController.SyncEquippedPets()
-	elseif valueName == "currentLocation" or valueName == "unlockedLocations" then
-		LocationController.UpdateGateStates()
-	end
+    if valueName == "coins" or valueName == "rocks" or valueName == "dice" then
+        EconomyController.UpdateDisplay()
+        UpgradeController.UpdateNotifications()
+    elseif valueName == "upgrades" then
+        UpgradeController.UpdateNotifications()
+    elseif valueName == "pets" then
+        BackpackController.Refresh()
+    elseif valueName == "equippedPets" then
+        CombatController.SyncEquippedPets()
+    elseif valueName == "currentLocation" or valueName == "unlockedLocations" then
+        LocationController.UpdateGateStates()
+    end
 end)
 
 -- Initial render after load
-local data = PlayerDataClient.get("coins")
 EconomyController.UpdateDisplay()
 UpgradeController.UpdateNotifications()
 BackpackController.Refresh()
+CombatController.SyncEquippedPets()
 LocationController.UpdateGateStates()
 
-print("GameClient initialized", data)
+print("GameClient initialized")
 
 return GameClient
