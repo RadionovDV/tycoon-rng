@@ -1,7 +1,6 @@
 -- RollService.lua
 -- Server-authoritative rolling system. Anti-spam via lastRollTime table.
--- On each roll: RNG determines pet → added to inventory → +1 dice.
--- Equipping is done separately via PetEquipService (manual from Backpack).
+-- On each roll: RNG determines pet → added to inventory → +1 dice → auto-equip if slot open.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayerService = require(script.Parent.PlayerService)
@@ -48,12 +47,26 @@ function RollService.Roll(player)
 		return (old or 0) + 1
 	end)
 
+	-- Auto-equip if slot available
+	local equipped = PlayerService.GetValue(player, "equippedPets") or {}
+	local maxSlots = PlayerService.GetValue(player, "maxEquipSlots") or 1
+
+	local autoEquipped = false
+	if #equipped < maxSlots then
+		autoEquipped = true
+		PlayerService.UpdateValue(player, "equippedPets", function(list)
+			table.insert(list, petId)
+			return list
+		end)
+	end
+
 	Remotes.RollPet:FireClient(player, {
 		petType = petType,
 		petId = petId,
 		rarity = petData.rarity,
 		displayName = petData.displayName,
 		damage = petData.damage,
+		autoEquipped = autoEquipped,
 	})
 end
 

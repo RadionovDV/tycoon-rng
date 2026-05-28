@@ -12,6 +12,7 @@ local CombatController = require(module.CombatController)
 local UpgradeController = require(module.UpgradeController)
 local LocationController = require(module.LocationController)
 local BackpackController = require(module.BackpackController)
+local MenuController = require(module.MenuController)
 
 PlayerDataClient.start()
 
