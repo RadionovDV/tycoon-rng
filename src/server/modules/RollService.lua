@@ -38,6 +38,7 @@ function RollService.Roll(player)
 			petType = petType,
 			rarity = petData.rarity,
 			damage = petData.damage,
+			maxHp = petData.hp or 20,
 			displayName = petData.displayName,
 		}
 		return pets

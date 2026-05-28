@@ -31,6 +31,4 @@ UpgradeService.StartListening()
 LocationService.StartListening()
 CombatService.Start()
 
-print("GameServer initialized")
-
 return GameServer

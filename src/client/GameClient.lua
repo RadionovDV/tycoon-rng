@@ -4,6 +4,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local module = script.Parent.Modules
+local Remotes = ReplicatedStorage.Remotes
 
 local PlayerDataClient = require(ReplicatedStorage.PlayerData.PlayerDataClient)
 local EconomyController = require(module.EconomyController)
@@ -47,13 +48,28 @@ PlayerDataClient.updated:Connect(function(valueName, value)
     end
 end)
 
+-- Combat state sync from server
+Remotes.SyncCombatState.OnClientEvent:Connect(function(data)
+    CombatController.SyncCombatState(data)
+end)
+
+Remotes.PetDefeated.OnClientEvent:Connect(function(data)
+    CombatController.OnPetDefeated(data.petId)
+end)
+
+Remotes.PetRevived.OnClientEvent:Connect(function(data)
+    CombatController.OnPetRevived(data.petId)
+end)
+
+Remotes.EnemyDefeated.OnClientEvent:Connect(function(data)
+    CombatController.OnEnemyDefeated(data.enemyId)
+end)
+
 -- Initial render after load
 EconomyController.UpdateDisplay()
 UpgradeController.UpdateNotifications()
 BackpackController.Refresh()
 CombatController.SyncEquippedPets()
 LocationController.UpdateGateStates()
-
-print("GameClient initialized")
 
 return GameClient
