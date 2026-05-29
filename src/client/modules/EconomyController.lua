@@ -15,19 +15,30 @@ local coinsLabel = gameplayGui:WaitForChild("LeftSide")
 local rocksLabel = gameplayGui:WaitForChild("LeftSide") 
 	and gameplayGui.LeftSide:WaitForChild("Rocks") 
 	and gameplayGui.LeftSide.Rocks:WaitForChild("TextLabel")
+local states = gameplayGui:WaitForChild("States")
+local luckState = states:WaitForChild("Luck")
+local iconLuckState = luckState:WaitForChild("IconLabel")
+local multLuckLabel = iconLuckState:WaitForChild("MultLabel")
+local speedState = states:WaitForChild("Speed")
+local iconSpeedState = speedState:WaitForChild("IconLabel")
+local speedDiceLabel = iconSpeedState:WaitForChild("SpeedLabel")
 
 local FormatNumber = require(ReplicatedStorage.FormatNumber)
 local Remotes = ReplicatedStorage.Remotes
 
 local EconomyController = {}
 
+function EconomyController._getLuckSum()
+	local luck = PlayerDataClient.get("luck") or 0
+	local rebirthBonusLuck = PlayerDataClient.get("rebirthBonusLuck") or 0
+	return luck + rebirthBonusLuck
+end
+
 function EconomyController.UpdateDisplay()
-	if coinsLabel then
-		coinsLabel.Text = FormatNumber.Format(PlayerDataClient.get("coins") or 0)
-	end
-	if rocksLabel then
-		rocksLabel.Text = FormatNumber.Format(PlayerDataClient.get("rocks") or 0)
-	end
+	coinsLabel.Text = FormatNumber.Format(PlayerDataClient.get("coins") or 0)
+	rocksLabel.Text = FormatNumber.Format(PlayerDataClient.get("rocks") or 0)
+	local luckSum = EconomyController._getLuckSum()
+	multLuckLabel.Text = `x{FormatNumber.Format(luckSum)}`
 end
 
 function EconomyController.AnimateCoin(amount, screenPosition)

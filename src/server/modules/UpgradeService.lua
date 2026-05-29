@@ -66,6 +66,18 @@ function UpgradeService.Purchase(player, upgradeId)
 		PlayerService.UpdateValue(player, "rocksUnlocked", function()
 			return true
 		end)
+	elseif config.effect == "unlockShop" then
+		PlayerService.UpdateValue(player, "shopUnlocked", function()
+			return true
+		end)
+	elseif config.effect == "unlockIndex" then
+		PlayerService.UpdateValue(player, "indexUnlocked", function()
+			return true
+		end)
+	elseif config.effect == "unlockRebirth" then
+		PlayerService.UpdateValue(player, "rebirthUnlocked", function()
+			return true
+		end)
 	elseif config.effect == "enemyCount" then
 		PlayerService.UpdateValue(player, "enemyCount", function(old)
 			return (old or 1) + config.value

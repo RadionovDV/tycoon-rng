@@ -10,7 +10,14 @@ local Remotes = ReplicatedStorage.Remotes
 local player = Players.LocalPlayer
 local playerGui = player.PlayerGui
 local menuGui = playerGui:WaitForChild("MenuGui")
-local rollUI = menuGui:WaitForChild("Roll")
+local rollFrame = menuGui:WaitForChild("Roll")
+local background = rollFrame:WaitForChild("Background")
+local viewingFrame = background:WaitForChild("Viewing")
+local petIcon = viewingFrame:WaitForChild("PetIcon")
+local petNameLabel = viewingFrame:WaitForChild("NameLabel")
+local rarityLabel = petIcon:WaitForChild("RarityLabel")
+local autoRoll = background:WaitForChild("AutoRoll")
+
 local gameplayGui = playerGui:WaitForChild("GameplayGui")
 local bottomSide = gameplayGui:WaitForChild("BottomSide")
 local rollFrame = bottomSide:WaitForChild("Roll")
@@ -32,25 +39,20 @@ rollButton.Activated:Connect(function()
 end)
 
 Remotes.RollPet.OnClientEvent:Connect(function(result)
-	if not rollUI then
+	if not rollFrame then
 		return
 	end
 
-	local nameLabel = rollUI:FindFirstChild("NameLabel", true)
-	local rarityLabel = rollUI:FindFirstChild("RarityLabel", true)
-	local iconLabel = rollUI:FindFirstChild("IconLabel", true)
+	local nameLabel = rollFrame:FindFirstChild("NameLabel", true)
+	local rarityLabel = rollFrame:FindFirstChild("RarityLabel", true)
 
-	if nameLabel then
-		nameLabel.Text = result.displayName
-	end
-	if rarityLabel then
-		rarityLabel.Text = result.rarity
-		rarityLabel.TextColor3 = rarityColors[result.rarity] or Color3.new(1, 1, 1)
-	end
+	petNameLabel.Text = result.displayName
+	rarityLabel.Text = result.rarity
+	rarityLabel.TextColor3 = rarityColors[result.rarity] or Color3.new(1, 1, 1)
 
-	rollUI.Visible = true
+	rollFrame.Visible = true
 	task.wait(1.5)
-	rollUI.Visible = false
+	rollFrame.Visible = false
 end)
 
 return RollController

@@ -27,6 +27,9 @@ function EconomyService.CanAfford(player, amount, currencyType)
 end
 
 function EconomyService.AddRocks(player, amount)
+	if not PlayerService.GetValue(player, "rocksUnlocked") then
+		return
+	end
 	PlayerService.UpdateValue(player, "rocks", function(old)
 		return (old or 0) + amount
 	end)

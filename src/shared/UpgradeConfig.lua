@@ -21,7 +21,13 @@ return {
 		icon = "rbxassetid://83955876596707",
 		nodePosition = { x = 1120, y = 1070 },
 	},
-	
+	shop = {
+		cost = 1000, currency = "coins", requires = "luck_2",
+		effect = "unlockShop", value = true,
+		displayName = "Shop", description = "Unlock shop for more benefits",
+		icon = "rbxassetid://118554800883386",
+		nodePosition = { x = 1240, y = 1000 },
+	},
 	rollspeed_1 = {
 		cost = 5, currency = "dice", requires = "luck_2",
 		effect = "rollCooldown", value = -0.5,
@@ -35,6 +41,13 @@ return {
 		displayName = "Roll Speed II", description = "Reduces roll cooldown by 0.3s",
 		icon = "rbxassetid://122184010309818",
 		nodePosition = { x = 1240, y = 1280 },
+	},
+	index = {
+		cost = 50000, currency = "coins", requires = "rollspeed_2",
+		effect = "unlockIndex", value = true,
+		displayName = "Index", description = "Find out how much is left",
+		icon = "rbxassetid://118367980795800",
+		nodePosition = { x = 1240, y = 1420 },
 	},
 	
 	extraslot_1 = {
@@ -50,6 +63,13 @@ return {
 		displayName = "Extra Slot II", description = "+1 pet equip slot",
 		icon = "rbxassetid://77560258643186",
 		nodePosition = { x = 760, y =  1000},
+	},
+	rebirth = {
+		cost = 5000, currency = "coins", requires = "extraslot_2",
+		effect = "unlockRebirth", value = true,
+		displayName = "Rebirth", description = "Unlock rebirth for more benefits",
+		icon = "rbxassetid://98256223082322",
+		nodePosition = { x = 640, y = 1070 },
 	},
 	
 	moreenemies_1 = {
