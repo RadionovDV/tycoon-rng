@@ -14,6 +14,7 @@ local UpgradeController = require(module.UpgradeController)
 local LocationController = require(module.LocationController)
 local BackpackController = require(module.BackpackController)
 local MenuController = require(module.MenuController)
+local RebirthController = require(module.RebirthController)
 
 PlayerDataClient.start()
 
@@ -29,6 +30,7 @@ local GameClient = {
 		UpgradeController = UpgradeController,
 		LocationController = LocationController,
 		BackpackController = BackpackController,
+		RebirthController = RebirthController,
 	},
 }
 
@@ -37,6 +39,7 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 	if valueName == "coins" or valueName == "rocks" or valueName == "dice" then
 		EconomyController.UpdateDisplay()
 		UpgradeController.UpdateNotifications()
+		RebirthController.Refresh()
 	elseif valueName == "upgrades" then
 		UpgradeController.UpdateNotifications()
 	elseif valueName == "pets" then
@@ -46,8 +49,12 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 		BackpackController.Refresh()
 	elseif valueName == "unlockedLocations" then
 		LocationController.UpdateGateStates()
+		RebirthController.Refresh()
 	elseif valueName == "currentLocation" then
-		
+
+	elseif valueName == "rebirthCount" then
+		RebirthController.Refresh()
+		LocationController.Refresh()
 	end
 end)
 
@@ -74,5 +81,6 @@ UpgradeController.UpdateNotifications()
 BackpackController.Refresh()
 CombatController.SyncEquippedPets()
 LocationController.UpdateGateStates()
+RebirthController.Refresh()
 
 return GameClient

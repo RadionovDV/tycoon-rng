@@ -28,7 +28,7 @@ function LocationController._connectGates()
 		end
 		
 		local back = gate:WaitForChild("Back")
-		
+		-- add fallback
 		local gui : SurfaceGuiBase
 		local attachment = back:FindFirstChild("BillboardAttachment") :: Attachment?
 		

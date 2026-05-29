@@ -10,6 +10,7 @@ local CombatService = require(module.CombatService)
 local UpgradeService = require(module.UpgradeService)
 local LocationService = require(module.LocationService)
 local PetEquipService = require(module.PetEquipService)
+local RebirthService = require(module.RebirthService)
 
 local GameServer = {
 	Services = {
@@ -29,6 +30,7 @@ RollService.StartListening()
 PetEquipService.StartListening()
 UpgradeService.StartListening()
 LocationService.StartListening()
+RebirthService.StartListening()
 CombatService.Start()
 
 return GameServer

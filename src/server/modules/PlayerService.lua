@@ -27,6 +27,7 @@ local DEFAULT_DATA = {
 	rebirthCount = 0,
 	rebirthBonusLuck = 0,
 	enemyCount = 1,
+	enemyKills = 0,
 }
 
 PlayerService.DEFAULT_DATA = DEFAULT_DATA

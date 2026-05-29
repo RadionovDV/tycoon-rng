@@ -260,6 +260,10 @@ function CombatService._processEnemyDamage(player, dt)
 			})
 		end
 
+		PlayerService.UpdateValue(player, "enemyKills", function(old)
+			return (old or 0) + 1
+		end)
+
 		if not respawnQueue[userId] then
 			respawnQueue[userId] = {}
 		end

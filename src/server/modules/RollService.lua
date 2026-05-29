@@ -25,7 +25,9 @@ function RollService.Roll(player)
 	lastRollTime[player.UserId] = now
 
 	local luck = PlayerService.GetValue(player, "luck") or 1
-	local petType, petData = RarityCalculator.Roll(luck)
+	local rebirthLuck = PlayerService.GetValue(player, "rebirthBonusLuck") or 0
+	local effectiveLuck = luck + rebirthLuck
+	local petType, petData = RarityCalculator.Roll(effectiveLuck)
 
 	local petCount = PlayerService.GetValue(player, "pets") or {}
 	local petCountNum = 0
