@@ -43,6 +43,7 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 		BackpackController.Refresh()
 	elseif valueName == "equippedPets" then
 		CombatController.SyncEquippedPets()
+		BackpackController.Refresh()
 	elseif valueName == "unlockedLocations" then
 		LocationController.UpdateGateStates()
 	elseif valueName == "currentLocation" then

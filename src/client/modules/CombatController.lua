@@ -183,7 +183,7 @@ function CombatController.SyncCombatState(data)
 						hpLabel = hpLabel,
 						targetPosition = Vector3.new(eData.position.X, eData.position.Y, eData.position.Z),
 					}
-
+					
 					model:PivotTo(CFrame.new(enemyModels[enemyId].targetPosition))
 				end
 			else
@@ -194,6 +194,19 @@ function CombatController.SyncCombatState(data)
 				enemyModels[enemyId].hpLabel.Text = string.format("HP: %d/%d", eData.hp, eData.maxHp)
 			end
 		end
+	end
+
+	-- Destroy enemy models that no longer exist in the sync data
+	-- (happens on location change — old enemies are cleared server-side)
+	local orphanedEnemyIds = {}
+	for enemyId in enemyModels do
+		if not data.enemies[enemyId] then
+			table.insert(orphanedEnemyIds, enemyId)
+		end
+	end
+	for _, enemyId in orphanedEnemyIds do
+		enemyModels[enemyId].model:Destroy()
+		enemyModels[enemyId] = nil
 	end
 
 	for petId, pData in data.pets do
