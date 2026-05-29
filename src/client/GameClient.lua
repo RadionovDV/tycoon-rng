@@ -18,51 +18,53 @@ local MenuController = require(module.MenuController)
 PlayerDataClient.start()
 
 if not PlayerDataClient.hasLoaded() then
-    PlayerDataClient.loaded:Wait()
+	PlayerDataClient.loaded:Wait()
 end
 
 local GameClient = {
-    Controllers = {
-        EconomyController = EconomyController,
-        RollController = RollController,
-        CombatController = CombatController,
-        UpgradeController = UpgradeController,
-        LocationController = LocationController,
-        BackpackController = BackpackController,
-    },
+	Controllers = {
+		EconomyController = EconomyController,
+		RollController = RollController,
+		CombatController = CombatController,
+		UpgradeController = UpgradeController,
+		LocationController = LocationController,
+		BackpackController = BackpackController,
+	},
 }
 
 -- React to any server-side data change and update relevant UI
 PlayerDataClient.updated:Connect(function(valueName, value)
-    if valueName == "coins" or valueName == "rocks" or valueName == "dice" then
-        EconomyController.UpdateDisplay()
-        UpgradeController.UpdateNotifications()
-    elseif valueName == "upgrades" then
-        UpgradeController.UpdateNotifications()
-    elseif valueName == "pets" then
-        BackpackController.Refresh()
-    elseif valueName == "equippedPets" then
-        CombatController.SyncEquippedPets()
-    elseif valueName == "currentLocation" or valueName == "unlockedLocations" then
-        LocationController.UpdateGateStates()
-    end
+	if valueName == "coins" or valueName == "rocks" or valueName == "dice" then
+		EconomyController.UpdateDisplay()
+		UpgradeController.UpdateNotifications()
+	elseif valueName == "upgrades" then
+		UpgradeController.UpdateNotifications()
+	elseif valueName == "pets" then
+		BackpackController.Refresh()
+	elseif valueName == "equippedPets" then
+		CombatController.SyncEquippedPets()
+	elseif valueName == "unlockedLocations" then
+		LocationController.UpdateGateStates()
+	elseif valueName == "currentLocation" then
+		
+	end
 end)
 
 -- Combat state sync from server
 Remotes.SyncCombatState.OnClientEvent:Connect(function(data)
-    CombatController.SyncCombatState(data)
+	CombatController.SyncCombatState(data)
 end)
 
 Remotes.PetDefeated.OnClientEvent:Connect(function(data)
-    CombatController.OnPetDefeated(data.petId)
+	CombatController.OnPetDefeated(data.petId)
 end)
 
 Remotes.PetRevived.OnClientEvent:Connect(function(data)
-    CombatController.OnPetRevived(data.petId)
+	CombatController.OnPetRevived(data.petId)
 end)
 
 Remotes.EnemyDefeated.OnClientEvent:Connect(function(data)
-    CombatController.OnEnemyDefeated(data.enemyId)
+	CombatController.OnEnemyDefeated(data.enemyId)
 end)
 
 -- Initial render after load

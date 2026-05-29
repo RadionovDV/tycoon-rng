@@ -1,7 +1,11 @@
 -- LocationService.lua
--- Server-authoritative location unlocking system. Validates prerequisite locations,
--- checks affordability, then unlocks and sets the new location as active.
+-- Server-authoritative location unlocking and tracking system.
+-- Unlock: validates prerequisites, checks affordability, adds to unlockedLocations.
+-- Baseplate tracking: scans Workspace for Location/POI/Baseplate parts,
+-- connects Touched to update currentLocation when the player physically enters an area.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
 
 local PlayerService = require(script.Parent.PlayerService)
 local EconomyService = require(script.Parent.EconomyService)
@@ -11,6 +15,74 @@ local Remotes = ReplicatedStorage.Remotes
 
 local LocationService = {}
 
+-- Guards against rapid re-triggers from Touched (fires multiple times per frame)
+local touchCooldowns = {}
+local TOUCH_COOLDOWN = 1
+
+-- Scans every Location folder in Workspace, finds POI.Baseplate, and connects
+-- a Touched handler that updates currentLocation when a player steps on it.
+function LocationService._initBaseplateTriggers()
+	for _, location in Workspace:GetChildren() do
+		local config = LocationConfig[location.Name]
+		if not config then
+			continue
+		end
+
+		local poi = location:FindFirstChild("POI")
+		local baseplate = poi and poi:FindFirstChild("Baseplate")
+		if not baseplate or not baseplate:IsA("BasePart") then
+			continue
+		end
+
+		baseplate.Touched:Connect(function(hit)
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if not player then
+				return
+			end
+			PlayerService.WaitForLoad(player)
+			local userId = player.UserId
+
+			-- Debounce: prevent rapid re-triggering
+			local now = tick()
+			local lastTouch = touchCooldowns[userId]
+			if lastTouch and (now - lastTouch) < TOUCH_COOLDOWN then
+				return
+			end
+			touchCooldowns[userId] = now
+
+			-- Only change location if it's already unlocked
+			local unlocked = PlayerService.GetValue(player, "unlockedLocations") or {}
+			local isUnlocked = false
+			for _, loc in unlocked do
+				if loc == location.Name then
+					isUnlocked = true
+					break
+				end
+			end
+			if not isUnlocked then
+				return
+			end
+
+			-- Skip if already in this location
+			local currentLoc = PlayerService.GetValue(player, "currentLocation")
+
+			if currentLoc == location.Name then
+				return
+			end
+
+			-- Update location and respawn enemies for the new area
+			PlayerService.UpdateValue(player, "currentLocation", function()
+				return location.Name
+			end)
+
+			local CombatService = require(script.Parent.CombatService)
+			CombatService.SpawnEnemiesForPlayer(player)
+		end)
+	end
+end
+
+-- Validates prerequisite, checks affordability, unlocks the location (adds to player's list).
+-- Does NOT change currentLocation — that happens via Baseplate touch.
 function LocationService.Unlock(player, locationId)
 	PlayerService.WaitForLoad(player)
 
@@ -50,21 +122,16 @@ function LocationService.Unlock(player, locationId)
 
 	EconomyService.SubtractCoins(player, config.unlockCost)
 
-	-- Add to unlocked list and set as current location
+	-- Add to unlocked list only (currentLocation set by Baseplate touch)
 	PlayerService.UpdateValue(player, "unlockedLocations", function(list)
 		table.insert(list, locationId)
 		return list
 	end)
-	PlayerService.UpdateValue(player, "currentLocation", function()
-		return locationId
-	end)
-
-	-- Re-spawn enemies for the new location
-	local CombatService = require(script.Parent.CombatService)
-	CombatService.SpawnEnemiesForPlayer(player)
 end
 
 function LocationService.StartListening()
+	LocationService._initBaseplateTriggers()
+
 	Remotes.UnlockLocation.OnServerEvent:Connect(function(player, locationId)
 		LocationService.Unlock(player, locationId)
 	end)

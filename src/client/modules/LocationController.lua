@@ -5,108 +5,123 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
 local PlayerDataClient = require(ReplicatedStorage.PlayerData.PlayerDataClient)
 local LocationConfig = require(ReplicatedStorage.LocationConfig)
 
-local player = Players.LocalPlayer
 local Remotes = ReplicatedStorage.Remotes
+local player = Players.LocalPlayer
+local playerGui = player.PlayerGui
+
+local uiObjects = ReplicatedStorage.UI.Objects
+local gateBillboardGuiTemplate = uiObjects:WaitForChild("GateBillboardGui")
+local gateSurfaceGuiTemplate = uiObjects:WaitForChild("GateSurfaceGui")
 
 local LocationController = {}
 
 function LocationController._connectGates()
-	for _, location in Workspace:GetChildren() do
-		local config = LocationConfig[location.Name]
-		if not config or not config.connectedLocationIds then
-			continue
-		end
-		
+	local function connectGate(location)
 		local gate = location:FindFirstChild("Gate")
 		if not gate then
-			continue
+			return
 		end
-
-		local back = gate:FindFirstChild("Back")
-		if not back then
-			continue
-		end
-
-		local gui = back:FindFirstChild("SurfaceGui", true)
-			or back:FindFirstChild("BillboardGui", true)
 		
-		if not gui then
-			continue
+		local back = gate:WaitForChild("Back")
+		
+		local gui : SurfaceGuiBase
+		local attachment = back:FindFirstChild("BillboardAttachment") :: Attachment?
+		
+		if attachment then
+			gui = gateBillboardGuiTemplate:Clone()
+			gui.Adornee = attachment
+		else
+			gui = gateSurfaceGuiTemplate:Clone()
+			gui.Adornee = back
 		end
 
-		local button = gui:FindFirstChild("UnlockButton", true)
-		--if button and not button:GetAttribute("GateConnected") then
-		--	button:SetAttribute("GateConnected", true)
-		--	button.Activated:Connect(function()
-		--		for _, targetId in config.connectedLocationIds do
-		--			Remotes.UnlockLocation:FireServer(targetId)
-		--		end
-		--	end)
-		--end
+		local config = LocationConfig[location.Name]
+		if not config or not config.connectedLocationIds then
+			return
+		end
 		
-		if button then
-			print(button)
-			button.Activated:Connect(function()
+		local lockerInfo = gui.LockerInfo
+		local titleLabel = lockerInfo.TitleLabel
+		local unlockButton = lockerInfo.Unlock.UnlockButton
+		local iconLabel = lockerInfo.PriceFrame.IconLabel
+		local priceLabel = lockerInfo.PriceFrame.PriceLabel
+
+		local nextLocationName = gate:GetAttribute("LeadTo") 
+		local nextLocationConfig = LocationConfig[nextLocationName]
+		
+		titleLabel.Text = nextLocationConfig.displayName
+		priceLabel.Text = nextLocationConfig.unlockCost
+
+		if unlockButton then
+			unlockButton.Activated:Connect(function()
 				for _, targetId in config.connectedLocationIds do
-					Remotes.UnlockLocation:FireServer(targetId)
+					if targetId == nextLocationName then
+						Remotes.UnlockLocation:FireServer(targetId)
+					end
 				end
 			end)
 		end
+		
+		gui.Name = location.Name
+		gui.Parent = playerGui
+	end
+
+	Workspace.ChildAdded:Connect(function(child)
+		task.spawn(connectGate, child)
+	end)
+	
+	for _, location in Workspace:GetChildren() do
+		task.spawn(connectGate, location)
 	end
 end
 
 function LocationController.UpdateGateStates()
-	local unlocked = PlayerDataClient.get("unlockedLocations") or {}
-
-	for _, location in Workspace:GetChildren() do
-		local config = LocationConfig[location.Name]
-		if not config or not config.connectedLocationIds then
+	local unlockedIds = PlayerDataClient.get("unlockedLocations") or {}
+	
+	for _, unlockedId in unlockedIds do
+		local curlocationId = LocationConfig[unlockedId].prerequisite
+		if not curlocationId then
 			continue
 		end
-
+		
+		local location = Workspace:FindFirstChild(curlocationId)
+		if not location then
+			continue
+		end
+		
 		local gate = location:FindFirstChild("Gate")
 		if not gate then
 			continue
 		end
 
 		local back = gate:FindFirstChild("Back")
-		if not back then
-			continue
+		local depthFade = gate:FindFirstChild("DepthFade")
+		for _, child in {back, depthFade} do
+			if not child then
+				continue
+			end
+			local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			local tween = TweenService:Create(child, tweenInfo, { Transparency = 1 })
+			tween:Play()
 		end
-
-		local gui = back:FindFirstChildOfClass("SurfaceGui")
-			or back:FindFirstChildOfClass("BillboardGui")
-		if not gui then
-			continue
-		end
-
-		local button = gui:FindFirstChild("UnlockButton", true)
-		local costLabel = gui:FindFirstChild("PriceFrame", true)
-
-		local allUnlocked = true
-		for _, targetId in config.connectedLocationIds do
-			local found = false
-			for _, loc in unlocked do
-				if loc == targetId then
-					found = true
-					break
+		
+		task.wait(0.5)
+		
+		for _, targetGui in playerGui:GetChildren() do
+			if targetGui.ClassName == "BillboardGui" or targetGui.ClassName == "SurfaceGui" then
+				if targetGui.Name == location.Name then
+					targetGui:Destroy()
 				end
 			end
-			if not found then
-				allUnlocked = false
-				break
-			end
 		end
-
-		if button then
-			button.Visible = not allUnlocked
-		end
-		if costLabel then
-			costLabel.Visible = not allUnlocked
-		end
+		
+		local locker = gate:FindFirstChild("Locker")
+		locker.CanCollide = false
 	end
 end
 

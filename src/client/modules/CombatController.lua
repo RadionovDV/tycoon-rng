@@ -6,7 +6,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
 local PlayerDataClient = require(ReplicatedStorage.PlayerData.PlayerDataClient)
 local PetConfig = require(ReplicatedStorage.PetConfig)
 
@@ -184,7 +183,7 @@ function CombatController.SyncCombatState(data)
 						hpLabel = hpLabel,
 						targetPosition = Vector3.new(eData.position.X, eData.position.Y, eData.position.Z),
 					}
-					
+
 					model:PivotTo(CFrame.new(enemyModels[enemyId].targetPosition))
 				end
 			else
