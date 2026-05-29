@@ -14,90 +14,100 @@ local Remotes = ReplicatedStorage.Remotes
 local LocationController = {}
 
 function LocationController._connectGates()
-    for _, location in Workspace:GetChildren() do
-        local config = LocationConfig[location.Name]
-        if not config or not config.connectedLocationIds then
-            continue
-        end
+	for _, location in Workspace:GetChildren() do
+		local config = LocationConfig[location.Name]
+		if not config or not config.connectedLocationIds then
+			continue
+		end
+		
+		local gate = location:FindFirstChild("Gate")
+		if not gate then
+			continue
+		end
 
-        local gate = location:FindFirstChild("Gate")
-        if not gate then
-            continue
-        end
+		local back = gate:FindFirstChild("Back")
+		if not back then
+			continue
+		end
 
-        local back = gate:FindFirstChild("Back")
-        if not back then
-            continue
-        end
+		local gui = back:FindFirstChild("SurfaceGui", true)
+			or back:FindFirstChild("BillboardGui", true)
+		
+		if not gui then
+			continue
+		end
 
-        local gui = back:FindFirstChildOfClass("SurfaceGui")
-                or back:FindFirstChildOfClass("BillboardGui")
-        if not gui then
-            continue
-        end
-
-        local button = gui:FindFirstChild("UnlockButton", true)
-        if button and not button:GetAttribute("GateConnected") then
-            button:SetAttribute("GateConnected", true)
-            button.Activated:Connect(function()
-                for _, targetId in config.connectedLocationIds do
-                    Remotes.UnlockLocation:FireServer(targetId)
-                end
-            end)
-        end
-    end
+		local button = gui:FindFirstChild("UnlockButton", true)
+		--if button and not button:GetAttribute("GateConnected") then
+		--	button:SetAttribute("GateConnected", true)
+		--	button.Activated:Connect(function()
+		--		for _, targetId in config.connectedLocationIds do
+		--			Remotes.UnlockLocation:FireServer(targetId)
+		--		end
+		--	end)
+		--end
+		
+		if button then
+			print(button)
+			button.Activated:Connect(function()
+				for _, targetId in config.connectedLocationIds do
+					Remotes.UnlockLocation:FireServer(targetId)
+				end
+			end)
+		end
+	end
 end
 
 function LocationController.UpdateGateStates()
-    local unlocked = PlayerDataClient.get("unlockedLocations") or {}
+	local unlocked = PlayerDataClient.get("unlockedLocations") or {}
 
-    for _, location in Workspace:GetChildren() do
-        local config = LocationConfig[location.Name]
-        if not config or not config.connectedLocationIds then
-            continue
-        end
+	for _, location in Workspace:GetChildren() do
+		local config = LocationConfig[location.Name]
+		if not config or not config.connectedLocationIds then
+			continue
+		end
 
-        local gate = location:FindFirstChild("Gate")
-        if not gate then
-            continue
-        end
+		local gate = location:FindFirstChild("Gate")
+		if not gate then
+			continue
+		end
 
-        local back = gate:FindFirstChild("Back")
-        if not back then
-            continue
-        end
+		local back = gate:FindFirstChild("Back")
+		if not back then
+			continue
+		end
 
-        local gui = back:FindFirstChildOfClass("SurfaceGui")
-                or back:FindFirstChildOfClass("BillboardGui")
-        if not gui then
-            continue
-        end
+		local gui = back:FindFirstChildOfClass("SurfaceGui")
+			or back:FindFirstChildOfClass("BillboardGui")
+		if not gui then
+			continue
+		end
 
-        local button = gui:FindFirstChild("UnlockButton", true)
-        local costLabel = gui:FindFirstChild("CostLabel", true)
+		local button = gui:FindFirstChild("UnlockButton", true)
+		local costLabel = gui:FindFirstChild("PriceFrame", true)
 
-        local allUnlocked = true
-        for _, targetId in config.connectedLocationIds do
-            local found = false
-            for _, loc in unlocked do
-                if loc == targetId then
-                    found = true
-                    break
-                end
-            end
-            if not found then
-                allUnlocked = false
-                break
-            end
-        end
+		local allUnlocked = true
+		for _, targetId in config.connectedLocationIds do
+			local found = false
+			for _, loc in unlocked do
+				if loc == targetId then
+					found = true
+					break
+				end
+			end
+			if not found then
+				allUnlocked = false
+				break
+			end
+		end
 
-        if button then
-            button.Visible = not allUnlocked
-        end
-        if costLabel then
-            costLabel.Visible = not allUnlocked
-        end
-    end
+		if button then
+			button.Visible = not allUnlocked
+		end
+		if costLabel then
+			costLabel.Visible = not allUnlocked
+		end
+	end
 end
 
 LocationController._connectGates()

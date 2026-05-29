@@ -208,9 +208,6 @@ end
 function CombatController.OnPetDefeated(petId)
 	local entry = petModels[petId]
 	if entry then
-		local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Linear)
-		local tween = TweenService:Create(entry.model:GetDescendants(), tweenInfo, { Transparency = 0.7 })
-		tween:Play()
 		for _, part in entry.model:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Transparency = 0.7
@@ -225,9 +222,6 @@ end
 function CombatController.OnPetRevived(petId)
 	local entry = petModels[petId]
 	if entry then
-		local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Linear)
-		local tween = TweenService:Create(entry.model:GetDescendants(), tweenInfo, { Transparency = 0 })
-		tween:Play()
 		for _, part in entry.model:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Transparency = 0

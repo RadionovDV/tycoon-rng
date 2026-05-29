@@ -1,11 +1,11 @@
 -- CombatService.lua
 -- Server-authoritative combat loop. Runs a heartbeat every 1s.
--- Enemies use PathfindingService to move toward the player, attack pets in range.
+-- Enemies move directly toward the player, attack pets in range.
 -- Pets have HP, can die and revive after 5s. Combat state is synced to client every tick.
+-- Enemies are fully removed on death and respawned after cooldown via respawnQueue.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
-local PathfindingService = game:GetService("PathfindingService")
 
 local PlayerService = require(script.Parent.PlayerService)
 local EconomyService = require(script.Parent.EconomyService)
@@ -18,6 +18,14 @@ local CombatService = {}
 
 local enemyState = {}
 local petCombat = {}
+local respawnQueue = {}
+local enemyIdCounter = {}
+
+function CombatService._nextEnemyId(userId)
+	local counter = (enemyIdCounter[userId] or 0) + 1
+	enemyIdCounter[userId] = counter
+	return counter
+end
 
 function CombatService._initPetCombat(player)
 	local equippedPets = PlayerService.GetValue(player, "equippedPets") or {}
@@ -57,9 +65,29 @@ function CombatService._initPetCombat(player)
 	end
 end
 
+function CombatService._newEnemyEntry(userId, enemyType, zone)
+	local config = EnemyConfig.Map[enemyType]
+	if not config then return nil end
+
+	return {
+		type = enemyType,
+		hp = config.hp,
+		maxHp = config.hp,
+		reward = config.reward,
+		movementSpeed = config.movementSpeed or 8,
+		attackRange = config.attackRange or 15,
+		attackDamage = config.attackDamage or 5,
+		attackRate = config.attackRate or 1,
+		zone = zone,
+		position = zone.Position,
+		lastAttackTime = 0,
+	}
+end
+
 function CombatService.SpawnEnemiesForPlayer(player)
 	PlayerService.WaitForLoad(player)
-	
+
+	local userId = player.UserId
 	local currentLocation = PlayerService.GetValue(player, "currentLocation") or "Location1"
 	local locationData = LocationConfig[currentLocation]
 	if not locationData then return end
@@ -77,37 +105,30 @@ function CombatService.SpawnEnemiesForPlayer(player)
 	local enemyCount = PlayerService.GetValue(player, "enemyCount") or 1
 	local enemyTypes = locationData.defaultEnemyTypes
 
-	enemyState[player.UserId] = {}
+	enemyState[userId] = {}
+	respawnQueue[userId] = {}
+	enemyIdCounter[userId] = 0
 
 	for i = 1, math.min(enemyCount, #zones) do
-		local zone = zones[(player.UserId + i - 1) % #zones + 1]
+		local zone = zones[math.random(1, #zones)]
 		local enemyType = enemyTypes[(i - 1) % #enemyTypes + 1]
 		local config = EnemyConfig.Map[enemyType]
 		if config then
-			local enemyId = string.format("%s_%d", enemyType, i)
-			enemyState[player.UserId][enemyId] = {
-				type = enemyType,
-				hp = config.hp,
-				maxHp = config.hp,
-				reward = config.reward,
-				movementSpeed = config.movementSpeed or 8,
-				attackRange = config.attackRange or 15,
-				attackDamage = config.attackDamage or 5,
-				attackRate = config.attackRate or 1,
-				isAlive = true,
-				zone = zone,
-				respawnTimer = 3,
-				currentRespawn = 0,
-				position = zone.Position,
-				path = nil,
-				pathIndex = 1,
-				pathTimer = 0,
-				lastAttackTime = 0,
-			}
+			local counter = CombatService._nextEnemyId(userId)
+			local enemyId = string.format("%s_%d", enemyType, counter)
+			enemyState[userId][enemyId] = CombatService._newEnemyEntry(userId, enemyType, zone)
 		end
 	end
 
 	CombatService._initPetCombat(player)
+end
+
+function CombatService.ClearPlayer(player)
+	local userId = player.UserId
+	enemyState[userId] = nil
+	respawnQueue[userId] = nil
+	petCombat[userId] = nil
+	enemyIdCounter[userId] = nil
 end
 
 function CombatService._getPlayerRootPos(player)
@@ -116,7 +137,7 @@ function CombatService._getPlayerRootPos(player)
 	return root and root.Position or nil
 end
 
-function CombatService._updateEnemyPaths(player, dt)
+function CombatService._moveEnemies(player, dt)
 	local userId = player.UserId
 	local enemies = enemyState[userId]
 	if not enemies then return end
@@ -124,51 +145,12 @@ function CombatService._updateEnemyPaths(player, dt)
 	local playerPos = CombatService._getPlayerRootPos(player)
 	if not playerPos then return end
 
-	local char = player.Character
-	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-
 	for enemyId, state in enemies do
-		if not state.isAlive then continue end
-
-		state.pathTimer = state.pathTimer + dt
-
-		if state.pathTimer >= 2 or not state.path then
-			state.pathTimer = 0
-			task.spawn(function()
-				local pathObject = PathfindingService:CreatePath({
-					AgentRadius = 2,
-					AgentHeight = 5,
-				})
-				pathObject:ComputeAsync(state.position, playerPos)
-				if pathObject.Status == Enum.PathStatus.Success then
-					state.path = pathObject:GetWaypoints()
-					state.pathIndex = 1
-				end
-			end)
-		end
-	end
-end
-
-function CombatService._moveEnemies(player, dt)
-	local userId = player.UserId
-	local enemies = enemyState[userId]
-	if not enemies then return end
-
-	for enemyId, state in enemies do
-		if not state.isAlive or not state.path then continue end
-
-		if state.pathIndex <= #state.path then
-			local waypoint = state.path[state.pathIndex]
-			local direction = (waypoint.Position - state.position).Unit
-			local distance = (waypoint.Position - state.position).Magnitude
-
-			if distance < 2 then
-				state.pathIndex = state.pathIndex + 1
-			else
-				local moveAmount = math.min(state.movementSpeed * dt, distance)
-				state.position = state.position + direction * moveAmount
-			end
+		local dist = (state.position - playerPos).Magnitude
+		if dist > state.attackRange then
+			local direction = (playerPos - state.position).Unit
+			local moveAmount = math.min(state.movementSpeed * dt, dist - state.attackRange + 1)
+			state.position = state.position + direction * moveAmount
 		end
 	end
 end
@@ -193,8 +175,6 @@ function CombatService._processEnemyAttacks(player, dt)
 	if #alivePetIds == 0 then return end
 
 	for enemyId, state in enemies do
-		if not state.isAlive then continue end
-
 		local dist = (state.position - playerPos).Magnitude
 		if dist <= state.attackRange then
 			state.lastAttackTime = state.lastAttackTime + dt
@@ -224,6 +204,106 @@ function CombatService._processEnemyAttacks(player, dt)
 	end
 end
 
+function CombatService._processEnemyDamage(player, dt)
+	local userId = player.UserId
+	local enemies = enemyState[userId]
+	if not enemies then return end
+
+	local equippedPets = PlayerService.GetValue(player, "equippedPets") or {}
+	local allPets = PlayerService.GetValue(player, "pets") or {}
+	local rocksUnlocked = PlayerService.GetValue(player, "rocksUnlocked") or false
+	local playerPos = CombatService._getPlayerRootPos(player)
+
+	local totalDamage = 0
+	for _, petId in equippedPets do
+		local pState = petCombat[userId] and petCombat[userId][petId]
+		if pState and pState.isAlive then
+			local petEntry = allPets[petId]
+			if petEntry then
+				totalDamage = totalDamage + (petEntry.damage or 0)
+			end
+		end
+	end
+
+	if totalDamage <= 0 or not playerPos then return end
+
+	local deadEnemies = {}
+	for enemyId, state in enemies do
+		local dist = (state.position - playerPos).Magnitude
+		if dist <= state.attackRange then
+			state.hp = state.hp - totalDamage
+			if state.hp <= 0 then
+				table.insert(deadEnemies, { id = enemyId, state = state })
+			end
+		end
+	end
+
+	for _, entry in deadEnemies do
+		local enemyId = entry.id
+		local state = entry.state
+
+		enemyState[userId][enemyId] = nil
+
+		EconomyService.AddCoins(player, state.reward)
+
+		if rocksUnlocked then
+			local rockReward = math.max(1, math.floor(state.reward / 5))
+			EconomyService.AddRocks(player, rockReward)
+		end
+
+		if state.zone then
+			Remotes.EnemyDefeated:FireClient(player, {
+				enemyId = enemyId,
+				position = state.position,
+				coinsAmount = state.reward,
+			})
+		end
+
+		if not respawnQueue[userId] then
+			respawnQueue[userId] = {}
+		end
+		table.insert(respawnQueue[userId], {
+			timer = 3,
+			enemyType = state.type,
+			zone = state.zone,
+		})
+	end
+end
+
+function CombatService._processRespawns(dt)
+	for userId, queue in respawnQueue do
+		local player = Players:GetPlayerByUserId(userId)
+		if not player then
+			respawnQueue[userId] = nil
+			continue
+		end
+
+		local i = #queue
+		while i >= 1 do
+			local entry = queue[i]
+			entry.timer = entry.timer - dt
+			if entry.timer <= 0 then
+				if not enemyState[userId] then
+					enemyState[userId] = {}
+				end
+
+				local zone = entry.zone
+				local zones = zone.Parent and zone.Parent:GetChildren() or {}
+				if #zones > 0 then
+					zone = zones[math.random(1, #zones)]
+				end
+
+				local counter = CombatService._nextEnemyId(userId)
+				local enemyId = string.format("%s_%d", entry.enemyType, counter)
+				enemyState[userId][enemyId] = CombatService._newEnemyEntry(userId, entry.enemyType, zone)
+
+				table.remove(queue, i)
+			end
+			i = i - 1
+		end
+	end
+end
+
 function CombatService._processPetRevives(dt)
 	for userId, pTable in petCombat do
 		for petId, state in pTable do
@@ -244,82 +324,33 @@ function CombatService._processPetRevives(dt)
 end
 
 function CombatService.CombatTick(player, dt)
-	local enemies = enemyState[player.UserId]
-	if not enemies then return end
+	local userId = player.UserId
+
+	if not enemyState[userId] then return end
 
 	CombatService._initPetCombat(player)
 
-	local equippedPets = PlayerService.GetValue(player, "equippedPets") or {}
-	local allPets = PlayerService.GetValue(player, "pets") or {}
-	local userId = player.UserId
-
-	local totalDamage = 0
-	for _, petId in equippedPets do
-		local pState = petCombat[userId] and petCombat[userId][petId]
-		if pState and pState.isAlive then
-			local petEntry = allPets[petId]
-			if petEntry then
-				totalDamage = totalDamage + (petEntry.damage or 0)
-			end
-		end
-	end
-
-	local rocksUnlocked = PlayerService.GetValue(player, "rocksUnlocked") or false
-
-	CombatService._updateEnemyPaths(player, dt)
 	CombatService._moveEnemies(player, dt)
 	CombatService._processEnemyAttacks(player, dt)
+	CombatService._processEnemyDamage(player, dt)
+	CombatService._processRespawns(dt)
 	CombatService._processPetRevives(dt)
-
-	for enemyId, state in enemies do
-		if state.isAlive then
-			if totalDamage > 0 then
-				state.hp = state.hp - totalDamage
-				if state.hp <= 0 then
-					state.isAlive = false
-					state.currentRespawn = 0
-
-					EconomyService.AddCoins(player, state.reward)
-
-					if rocksUnlocked then
-						local rockReward = math.max(1, math.floor(state.reward / 5))
-						EconomyService.AddRocks(player, rockReward)
-					end
-
-					if state.zone then
-						Remotes.EnemyDefeated:FireClient(player, {
-							enemyId = enemyId,
-							position = state.position,
-							coinsAmount = state.reward,
-						})
-					end
-				end
-			end
-		else
-			state.currentRespawn = state.currentRespawn + dt
-			if state.currentRespawn >= state.respawnTimer then
-				state.hp = state.maxHp
-				state.isAlive = true
-				state.currentRespawn = 0
-				state.position = state.zone and state.zone.Position or state.position
-				state.path = nil
-				state.pathIndex = 1
-			end
-		end
-	end
 
 	local syncData = {
 		enemies = {},
 		pets = {},
 	}
-	for enemyId, state in enemies do
-		syncData.enemies[enemyId] = {
-			hp = state.hp,
-			maxHp = state.maxHp,
-			isAlive = state.isAlive,
-			type = state.type,
-			position = { X = state.position.X, Y = state.position.Y, Z = state.position.Z },
-		}
+	local enemies = enemyState[userId]
+	if enemies then
+		for enemyId, state in enemies do
+			syncData.enemies[enemyId] = {
+				hp = state.hp,
+				maxHp = state.maxHp,
+				isAlive = true,
+				type = state.type,
+				position = { X = state.position.X, Y = state.position.Y, Z = state.position.Z },
+			}
+		end
 	end
 	if petCombat[userId] then
 		for petId, state in petCombat[userId] do
@@ -362,9 +393,7 @@ function CombatService.Start()
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
-		local userId = player.UserId
-		enemyState[userId] = nil
-		petCombat[userId] = nil
+		CombatService.ClearPlayer(player)
 	end)
 
 	task.spawn(CombatService.TickLoop)
