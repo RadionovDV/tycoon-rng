@@ -1,6 +1,6 @@
 -- RollController.lua
--- Client-side rolling UI handler.
--- Fires server on button click, receives pet result, and displays it in the roll popup.
+-- Client-side rolling UI handler. Fires server on button click, receives pet result,
+-- and displays it in either the Roll window or the HUD auto-roll frame.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local PlayerDataClient = require(ReplicatedStorage.PlayerData.PlayerDataClient)
@@ -12,16 +12,27 @@ local playerGui = player.PlayerGui
 local menuGui = playerGui:WaitForChild("MenuGui")
 local rollFrame = menuGui:WaitForChild("Roll")
 local background = rollFrame:WaitForChild("Background")
-local viewingFrame = background:WaitForChild("Viewing")
-local petIcon = viewingFrame:WaitForChild("PetIcon")
-local petNameLabel = viewingFrame:WaitForChild("NameLabel")
-local rarityLabel = petIcon:WaitForChild("RarityLabel")
+local hideRoll = background:WaitForChild("HideRoll")
 local autoRoll = background:WaitForChild("AutoRoll")
 
+-- ViewingRoll is now a template in ReplicatedStorage — clone it for this player
+local viewingRollTemplate = ReplicatedStorage.UI.Objects:WaitForChild("ViewingRoll")
+local viewingRollInstance = viewingRollTemplate:Clone()
+viewingRollInstance.Parent = background
+
+local petIcon = viewingRollInstance:WaitForChild("PetIcon")
+local petNameLabel = viewingRollInstance:WaitForChild("NameLabel")
+local rarityLabel = petIcon:WaitForChild("RarityLabel")
+
 local gameplayGui = playerGui:WaitForChild("GameplayGui")
+local autorollFrame = gameplayGui:WaitForChild("Autoroll")
 local bottomSide = gameplayGui:WaitForChild("BottomSide")
-local rollFrame = bottomSide:WaitForChild("Roll")
-local rollButton = rollFrame:WaitForChild("RollButton")
+local rollHudFrame = bottomSide:WaitForChild("Roll")
+local rollButton = rollHudFrame:WaitForChild("RollButton")
+
+-- Auto-roll state
+local autoRollActive = false
+local autoRollThread = nil
 
 local rarityColors = {
 	Common = Color3.fromRGB(180, 180, 180),
@@ -34,25 +45,89 @@ local rarityColors = {
 
 local RollController = {}
 
-rollButton.Activated:Connect(function()
-	Remotes.RollPet:FireServer()
-end)
+-- Shows/hides the AutoRoll and HideRoll buttons based on whether the player owns the upgrade.
+-- Called on init and whenever autoRollUnlocked changes.
+function RollController.UpdateAutoRollVisibility()
+	autoRoll.Visible = PlayerDataClient.get("autoRollUnlocked") or false
+	hideRoll.Visible = autoRoll.Visible
+end
 
-Remotes.RollPet.OnClientEvent:Connect(function(result)
-	if not rollFrame then
-		return
+-- Activates auto-roll: closes Roll window, moves ViewingRoll into the HUD autoroll
+-- frame, and starts a background loop that fires RollPet every rollCooldown seconds.
+function RollController._startAutoRoll()
+	autoRollActive = true
+	rollFrame.Visible = false
+	viewingRollInstance.Parent = autorollFrame
+
+	autoRollThread = task.spawn(function()
+		while autoRollActive do
+			Remotes.RollPet:FireServer()
+			task.wait(PlayerDataClient.get("rollCooldown") or 2)
+		end
+	end)
+end
+
+-- Deactivates auto-roll: stops the loop, lets the last result stay visible for 1.5s,
+-- then closes the Roll window and returns ViewingRoll to its default parent.
+function RollController._stopAutoRoll()
+	autoRollActive = false
+	if autoRollThread then
+		task.cancel(autoRollThread)
+		autoRollThread = nil
 	end
 
-	local nameLabel = rollFrame:FindFirstChild("NameLabel", true)
-	local rarityLabel = rollFrame:FindFirstChild("RarityLabel", true)
+	task.wait(1.5)
 
+	rollFrame.Visible = false
+	viewingRollInstance.Parent = background
+end
+
+-- Manual roll button in the HUD.
+-- During auto-roll it toggles the Roll window instead of firing a roll.
+rollButton.Activated:Connect(function()
+	if autoRollActive then
+		rollFrame.Visible = not rollFrame.Visible
+	else
+		Remotes.RollPet:FireServer()
+	end
+end)
+
+-- Closes the Roll window (manual roll dismissal)
+hideRoll.Activated:Connect(function()
+	rollFrame.Visible = false
+end)
+
+-- Toggles auto-roll on/off
+autoRoll.Activated:Connect(function()
+	if autoRollActive then
+		RollController._stopAutoRoll()
+	else
+		RollController._startAutoRoll()
+	end
+end)
+
+-- While auto-rolling, keep ViewingRoll in whichever container is open
+rollFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+	if not autoRollActive then
+		return
+	end
+	viewingRollInstance.Parent = rollFrame.Visible and background or autorollFrame
+end)
+
+-- Receives roll results from the server and updates the display
+Remotes.RollPet.OnClientEvent:Connect(function(result)
 	petNameLabel.Text = result.displayName
 	rarityLabel.Text = result.rarity
 	rarityLabel.TextColor3 = rarityColors[result.rarity] or Color3.new(1, 1, 1)
 
-	rollFrame.Visible = true
-	task.wait(1.5)
-	rollFrame.Visible = false
+	if autoRollActive then
+		viewingRollInstance.Visible = true
+	else
+		viewingRollInstance.Parent = background
+		rollFrame.Visible = true
+		task.wait(1.5)
+		rollFrame.Visible = false
+	end
 end)
 
 return RollController

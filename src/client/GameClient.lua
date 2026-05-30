@@ -60,6 +60,8 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 		LocationController.Refresh()
 	elseif valueName == "rocksUnlocked" or valueName == "shopUnlocked" or valueName == "indexUnlocked" or valueName == "rebirthUnlocked" then
 		VisibilityController.Refresh()
+	elseif valueName == "autoRollUnlocked" then
+		RollController.UpdateAutoRollVisibility()
 	end
 end)
 
@@ -88,5 +90,6 @@ CombatController.SyncEquippedPets()
 LocationController.UpdateGateStates()
 RebirthController.Refresh()
 VisibilityController.Refresh()
+RollController.UpdateAutoRollVisibility()
 
 return GameClient
