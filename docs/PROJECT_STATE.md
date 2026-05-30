@@ -13,7 +13,7 @@ First-person Roblox game where players roll dice to obtain Petrocks (pets), whic
 | `UpgradeConfig` | 13 upgrades (luck, rollSpeed, extraSlots, moreEnemies, autoRoll, rocks, shop, index, rebirth) |
 | `LocationConfig` | 3 locations with connectedLocationIds, defaultEnemyTypes |
 | `RebirthConfig` | 3 rebirth tiers with requiredLocations, coins, dices, rocks, enemyKills, minPets, luckBonus |
-| `RarityCalculator` | RNG with luck-weighted rarity (non-Common weight / luck) |
+| `RarityCalculator` | RNG with luck-weighted rarity (non-Common weight * luck). Fixed from `/` to `*` to prevent inverse scaling bug at high rebirthBonusLuck |
 | `FormatNumber` | Display formatting (1K, 2.3M) |
 | `Signal` | Custom Signal used by PlayerData system |
 
@@ -26,7 +26,7 @@ First-person Roblox game where players roll dice to obtain Petrocks (pets), whic
 | `CombatService` | 1s tick: direct enemy movement, pet attack, enemy/pet HP, death/revive (5s), respawn queue (3s), enemyKills counter, rockReward if rocksUnlocked |
 | `UpgradeService` | Purchase validation + effect application (luck, rollCooldown, maxEquipSlots, unlockAutoRoll, unlockRocks, unlockShop, unlockIndex, unlockRebirth, enemyCount) |
 | `LocationService` | Unlock validation (prerequisite + cost), Baseplate Touch → currentLocation update + enemy respawn |
-| `PetEquipService` | Equip/Unequip validation (ownership, slots, duplicates) |
+| `PetEquipService` | Equip/Unequip validation (ownership, slots, duplicates). Auto-swap on full slots: replaces equipped pet with highest weight |
 | `RebirthService` | Rebirth validation (all config requirements), reset fields via DEFAULT_DATA, additive luck bonus, teleport to Location1 |
 
 ### Client Controllers (StarterPlayerScripts)
@@ -68,6 +68,8 @@ coins, rocks, dice, pets (dict), equippedPets (array), maxEquipSlots (1), upgrad
 - **Auto-roll**: client-side loop fires `RollPet` every `rollCooldown`, server validates cooldown. No new RemoteEvent needed.
 - **UI gating**: `VisibilityController` and `RollController.UpdateAutoRollVisibility()` read from `upgrades` dict (not individual `*Unlocked` fields) for reliable post-rebirth sync
 - **ViewingRoll**: single cloned instance, parented to either `MenuGui.Roll.Background` or `GameplayGui.Autoroll` depending on auto-roll state and Roll window visibility
+- **PetEquipService auto-swap**: when `Equip()` is called with all slots filled, the function iterates equipped pets, finds the one with the highest `PetConfig.weight` (most common/least rare), removes it from `equippedPets`, and inserts the new pet. The replaced pet stays in the inventory and can be re-equipped later. Logic is in a single `UpdateValue` call.
+- **RarityCalculator luck scaling**: `non-Common weight * luck` (fixed from original `/`). At default luck=1.0 behavior is identical; at high rebirthBonusLuck (e.g., +30), rare weights scale up proportionally, making Divine/Epic rolls dramatically more likely instead of vanishing.
 
 ## Upgrade Tree (UpgradeConfig)
 ```

@@ -12,7 +12,7 @@ function RarityCalculator.Roll(luckMultiplier)
 	for _, petData in PetConfig.List do
 		local weight = petData.weight
 		if petData.rarity ~= "Common" then
-			weight = weight / luckMultiplier
+			weight = weight * luckMultiplier
 		end
 		effectiveWeights[petData.id] = weight
 		totalWeight += weight

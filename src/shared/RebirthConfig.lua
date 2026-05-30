@@ -18,7 +18,7 @@
 return {
 	Rebirth1 = {
 		displayName = "Rebirth I",
-		luckBonus = 10,
+		luckBonus = 1,
 		requirements = {
 			--unlockedLocations = "Location2",
 			rocks = 100,
@@ -27,7 +27,7 @@ return {
 	},
 	Rebirth2 = {
 		displayName = "Rebirth II",
-		luckBonus = 20,
+		luckBonus = 1.5,
 		requirements = {
 			unlockedLocations = "Location2",
 			rocks = 200,
@@ -36,10 +36,10 @@ return {
 	},
 	Rebirth3 = {
 		displayName = "Rebirth III",
-		luckBonus = 30,
+		luckBonus = 2.4,
 		requirements = {
 			unlockedLocations = "Location3",
-			coins = 2000,
+			coins = 1000,
 			rocks = 500,
 			enemyKills = 500,
 			pets = 500,

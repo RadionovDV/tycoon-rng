@@ -26,6 +26,7 @@
 - **Позиции узлов апгрейда** берутся из `UpgradeConfig[upgradeId].nodePosition`, не хардкодятся в контроллере.
 - **Cost display** читается через `tile.Price.PriceLabel` + `tile.Price.CurrencyImage`.
 - **HUD visibility** контролируется через `VisibilityController` и `RollController.UpdateAutoRollVisibility()`. Оба читают словарь `upgrades`, а не отдельные PlayerData поля — из-за ненадёжной синхронизации новых полей после ребирта.
+- **PetEquipService auto-swap**: когда `Equip()` вызывается при заполненных слотах, пет с наибольшим `weight` (самый частый/дешёвый) автоматически заменяется новым. В `Unequip()` логика замены отсутствует — только ручное снятие.
 
 ## Require path conventions
 
@@ -117,7 +118,7 @@ ServerScriptService/
         ├── CombatService.lua      — 1s tick: enemy movement, pet damage, respawn queue, revive
         ├── UpgradeService.lua     — Purchase validation, effect application (luck/cooldown/slots/unlocks/enemyCount)
         ├── LocationService.lua    — Unlock via Gate, Baseplate Touch → currentLocation
-        ├── PetEquipService.lua    — Equip/Unequip validation
+        ├── PetEquipService.lua    — Equip/Unequip validation + auto-swap on full slots (replaces highest-weight pet)
         └── RebirthService.lua     — Rebirth validation, reset via DEFAULT_DATA, luck bonus, teleport
 
 ## Client Controllers (StarterPlayerScripts/GameClient/Modules/)

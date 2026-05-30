@@ -3,6 +3,7 @@
 -- Validates ownership, slot availability, and duplicate checks for equip/unequip actions.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayerService = require(script.Parent.PlayerService)
+local PetConfig = require(ReplicatedStorage.PetConfig)
 
 local Remotes = ReplicatedStorage.Remotes
 
@@ -20,16 +21,40 @@ function PetEquipService.Equip(player, petId)
         return
     end
 
-    -- Slot must be available
-    if #equipped >= maxSlots then
-        return
-    end
-
     -- Must not already be equipped
     for _, pid in equipped do
         if pid == petId then
             return
         end
+    end
+
+    if #equipped >= maxSlots then
+        local replaceId = nil
+        local highestWeight = -math.huge
+        for _, pid in equipped do
+            local petData = pets[pid]
+            if petData then
+                local config = PetConfig.Map[petData.petType]
+                if config and config.weight > highestWeight then
+                    highestWeight = config.weight
+                    replaceId = pid
+                end
+            end
+        end
+        if not replaceId then
+            return
+        end
+        PlayerService.UpdateValue(player, "equippedPets", function(list)
+            local newList = {}
+            for _, pid in list do
+                if pid ~= replaceId then
+                    table.insert(newList, pid)
+                end
+            end
+            table.insert(newList, petId)
+            return newList
+        end)
+        return
     end
 
     PlayerService.UpdateValue(player, "equippedPets", function(list)

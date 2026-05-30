@@ -12,7 +12,7 @@ return {
 	},
 	Location2 = {
 		displayName = "Stone Cave",
-		unlockCost = 200,
+		unlockCost = 150,
 		prerequisite = "Location1",
 		defaultEnemyTypes = { "AngryRock_Medium", "AngryRock_Strong" },
 		connectedLocationIds = { "Location3" },
@@ -20,7 +20,7 @@ return {
 	},
 	Location3 = {
 		displayName = "Level 2",
-		unlockCost = 2000,
+		unlockCost = 3000,
 		prerequisite = "Location2",
 		defaultEnemyTypes = { "AngryRock_Strong" },
 	},

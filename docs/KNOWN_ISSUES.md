@@ -1,5 +1,11 @@
 # KNOWN_ISSUES.md — Bugs, Risks, and What NOT to Break
 
+## Recent Fixes (Session 2026-05-30)
+
+- **RarityCalculator inverse scaling (FIXED)**: Formula `weight / luckMultiplier` caused rare pets to become *rarer* as luck increased (e.g., Divine_Opal chance dropped from 0.00094% to 0.00004% at rebirthBonusLuck=30). Fixed to `weight * luckMultiplier`. Rare weights now scale up with luck, correctly increasing rare roll chances.
+
+- **PetEquipService auto-swap (ADDED)**: `Equip()` now replaces the highest-weight equipped pet when all slots are full, instead of silently failing.
+
 ## Known Issues
 
 ### 1. Circular requires (runtime, safe)
@@ -59,6 +65,8 @@ If `rollCooldown` changes during auto-roll (e.g., upgrade purchased), the loop r
 
 9. **VisibilityController path resolution** — `VisibilityController` finds UI elements dynamically at `Refresh()` time (`FindFirstChild`). If the target elements are renamed or moved in StarterGui, they won't be found and will stay in their Studio-default visibility state.
 
+10. **PetEquipService now requires PetConfig at module scope** — `PetEquipService.lua` now has `local PetConfig = require(ReplicatedStorage.PetConfig)` at the top level. If PetConfig is renamed, moved, or fails to load, PetEquipService will not load and all equip/unequip operations will fail silently (no handler connected).
+
 ## Testing Notes
 - DataStore warning in Studio: expected when running unpublished. Game uses default data.
 - Roll button → check Output for pet result
@@ -68,3 +76,5 @@ If `rollCooldown` changes during auto-roll (e.g., upgrade purchased), the loop r
 - Rebirth: unlock Location2, collect 5+ pets, open Rebirth window, check requirements
 - Auto-roll: buy `autoll` upgrade → AutoRoll button visible in Roll window → click to start → ViewingRoll moves to GameplayGui.Autoroll → click again to stop → 1.5s animation → Roll window closes
 - UI gating: buy `rocks_unlock` → Rocks appears in HUD. Buy `shop` → Shop appears in RightSide. After rebirth all reset to hidden.
+- Auto-swap: equip `maxEquipSlots` pets (default 1), then roll a new pet → if autoEquip triggers but slot is full, Equip() should replace the equipped pet with the new one. The replaced pet stays in inventory.
+- Luck scaling: rebirth with `rebirthBonusLuck=30` (via RebirthConfig or manual DataStore edit), then roll → Divine/Epic/Legendary pets should appear noticeably more often, not less.
