@@ -174,6 +174,10 @@ function UpgradeController._renderUpgrades()
 				Remotes.PurchaseUpgrade:FireServer(upgradeId)
 			end)
 		end
+		
+		if status == "notenough" then
+			priceLabel.TextColor3 = Color3.fromRGB(120, 0, 0)
+		end
 
 		tile.Parent = board
 	end
@@ -188,7 +192,7 @@ end
 -- ============================================================================
 
 -- Attaches all input listeners once at module load.
-function UpgradeController._setupInput()
+function UpgradeController._setupInput()	
 	local isDrag = false
 	local startInputPosition = nil
 	local prevOffsetX = 0

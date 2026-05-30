@@ -45,6 +45,8 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 		EconomyController.UpdateDisplay()
 	elseif valueName == "upgrades" then
 		UpgradeController.UpdateNotifications()
+		VisibilityController.Refresh()
+		RollController.UpdateAutoRollVisibility()
 	elseif valueName == "pets" then
 		BackpackController.Refresh()
 	elseif valueName == "equippedPets" then
@@ -58,6 +60,8 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 	elseif valueName == "rebirthCount" then
 		RebirthController.Refresh()
 		LocationController.Refresh()
+		VisibilityController.Refresh()
+		RollController.UpdateAutoRollVisibility(true)
 	elseif valueName == "rocksUnlocked" or valueName == "shopUnlocked" or valueName == "indexUnlocked" or valueName == "rebirthUnlocked" then
 		VisibilityController.Refresh()
 	elseif valueName == "autoRollUnlocked" then

@@ -45,11 +45,18 @@ local rarityColors = {
 
 local RollController = {}
 
--- Shows/hides the AutoRoll and HideRoll buttons based on whether the player owns the upgrade.
--- Called on init and whenever autoRollUnlocked changes.
-function RollController.UpdateAutoRollVisibility()
-	autoRoll.Visible = PlayerDataClient.get("autoRollUnlocked") or false
-	hideRoll.Visible = autoRoll.Visible
+-- Shows/hides the AutoRoll and HideRoll buttons based on whether the player
+-- owns the autoll upgrade. Reads from upgrades dict for reliable post-rebirth sync.
+-- Called on init and whenever upgrades or autoRollUnlocked changes.
+function RollController.UpdateAutoRollVisibility(rebirth)
+	local upgrades = PlayerDataClient.get("upgrades") or {}
+	local unlocked = upgrades.autoll == true
+	autoRoll.Visible = unlocked
+	hideRoll.Visible = unlocked
+	if rebirth then
+		autoRollActive = false
+		viewingRollInstance.Parent = background
+	end
 end
 
 -- Activates auto-roll: closes Roll window, moves ViewingRoll into the HUD autoroll
