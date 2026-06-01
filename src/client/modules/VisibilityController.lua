@@ -26,7 +26,7 @@ local UPGRADE_MAP = {
 function VisibilityController.Refresh()
 	local upgrades = PlayerDataClient.get("upgrades") or {}
 	local permanentUpgrades = PlayerDataClient.get("permanentUpgrades") or {}
-
+	
 	for upgradeId, path in UPGRADE_MAP do
 		local uiElement = path[1]:FindFirstChild(path[2])
 		if not uiElement then

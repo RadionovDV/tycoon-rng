@@ -3,11 +3,12 @@
 -- Validates requirements against RebirthConfig, resets progress to defaults,
 -- awards additive luck bonus, teleports player to Location1 spawn.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
 local Workspace = game:GetService("Workspace")
 
 local PlayerService = require(script.Parent.PlayerService)
 local RebirthConfig = require(ReplicatedStorage.RebirthConfig)
-local UpgradeConfig = require(ReplicatedStorage.UpgradeConfig)
+local UpgradeConfig = require(ReplicatedFirst.UpgradeConfig)
 local TableUtils = require(ReplicatedStorage.TableUtils) 
 
 local Remotes = ReplicatedStorage.Remotes
@@ -35,7 +36,7 @@ function RebirthService.PerformRebirth(player)
 	local rebirthCount = PlayerService.GetValue(player, "rebirthCount") or 0
 	local tyreConfig = RebirthConfig["Rebirth" .. tostring(rebirthCount + 1)]
 	if not tyreConfig then return end
-	
+
 	local reqSource = tyreConfig.requirements
 	if not reqSource then return end
 
@@ -50,7 +51,7 @@ function RebirthService.PerformRebirth(player)
 				break
 			end
 		end
-		
+
 		if not found then return end
 	end
 

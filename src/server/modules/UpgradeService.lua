@@ -2,10 +2,11 @@
 -- Server-authoritative upgrade purchase system. Validates prerequisites, affordability,
 -- and applies effects via per-field PlayerDataServer updates.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
 
 local PlayerService = require(script.Parent.PlayerService)
 local EconomyService = require(script.Parent.EconomyService)
-local UpgradeConfig = require(ReplicatedStorage.UpgradeConfig)
+local UpgradeConfig = require(ReplicatedFirst.UpgradeConfig)
 
 local Remotes = ReplicatedStorage.Remotes
 
@@ -50,16 +51,14 @@ function UpgradeService.Purchase(player, upgradeId)
 		list[upgradeId] = true
 		return list
 	end)
-
-	-- If the upgrade is permanent, also record it in permanentUpgrades immediately.
-	-- This ensures it survives a server restart + rebirth cycle without data loss.
+	
 	if config.isPermanent then
 		PlayerService.UpdateValue(player, "permanentUpgrades", function(list)
 			list[upgradeId] = true
 			return list
 		end)
 	end
-
+	
 	-- Apply the upgrade's effect to the relevant stat
 	if config.effect == "luck" then
 		PlayerService.UpdateValue(player, "luck", function()

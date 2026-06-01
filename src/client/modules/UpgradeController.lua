@@ -4,11 +4,13 @@
 -- Handles purchase requests via Remotes.PurchaseUpgrade.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 
 local PlayerDataClient = require(ReplicatedStorage.PlayerData.PlayerDataClient)
-local UpgradeConfig = require(ReplicatedStorage.UpgradeConfig)
+local UpgradeConfig = require(ReplicatedFirst.UpgradeConfig)
+local mergeArraysUniqueOnly = require(ReplicatedStorage.mergeArraysUniqueOnly)
 local Remotes = ReplicatedStorage.Remotes
 
 local player = Players.LocalPlayer
@@ -29,7 +31,7 @@ local redPoint = upgradeHudFrame:WaitForChild("RedPoint")
 local updateCountLabel = redPoint:WaitForChild("UpdateCountLabel")
 
 -- Template for upgrade nodes, created by the user in ReplicatedStorage.UI.Objects
-local tileTemplate = ReplicatedStorage.UI.Objects:WaitForChild("UpgradeTileButton")
+local itemTileTemplate = ReplicatedStorage.UI.Objects:WaitForChild("UpgradeTileButton")
 
 local UpgradeController = {}
 
@@ -42,73 +44,90 @@ local STATUS_COLORS = {
 	permanent = Color3.fromRGB(30, 30, 30),
 }
 
--- ============================================================================
--- DRAG (PAN) STATE
--- ============================================================================
--- Tracks whether the user is actively panning the board.
--- Roblox distinguishes button clicks from drags automatically (Activated does
--- not fire after significant cursor movement), but we also gate on thresholdMet
--- for safety.
-
-local drag = {
-	active = false,
-	startInputPos = nil,
-	startBoardPos = nil,
-	thresholdMet = false,
-}
-
 local DRAG_THRESHOLD = 5
 local hasRenderedOnce = false
 
--- ============================================================================
--- PRIVATE HELPERS
--- ============================================================================
+function UpgradeController._isBranchComplete(upgradeId, ownedUpgrades)
+	local branch = {}
+	local tireConfig = UpgradeConfig[upgradeId]
+	table.insert(branch, upgradeId)
+	
+	local function addParent(curConfig)
+		local parentId = curConfig.requires
+		if not parentId then
+			return
+		end
+		
+		local parentConfig = UpgradeConfig[parentId]
+		if not parentConfig then
+			return
+		end
+		
+		if not parentConfig.isPermanent then
+			return
+		end
+		
+		table.insert(branch, parentId)
+		addParent(parentConfig)
+	end
+	
+	local function addChildren(curConfig)
+		local childIds = curConfig.children
+		if not childIds then
+			return
+		end
+		
+		for _, childId in childIds do
+			local childConfig = UpgradeConfig[childId]
+			if not childConfig then
+				return
+			end
 
--- Determines the status of a single upgrade for the current player.
--- @return string: "permanent", "owned", "buyable", "locked", or "notenough"
-function UpgradeController._getStatus(upgradeId, config, upgrades, permanentUpgrades, coins, dice)
-	if permanentUpgrades[upgradeId] then
-		return "permanent"
+			if not childConfig.isPermanent then
+				return
+			end
+			
+			table.insert(branch, childId)
+			addChildren(childConfig)
+		end
+	end
+	
+	addParent(tireConfig)
+	addChildren(tireConfig)
+	
+	local uniqueBranch = mergeArraysUniqueOnly(branch)
+	local branchCompleted = true
+	
+	for _, checkUpgradeId in uniqueBranch do
+		if not ownedUpgrades[checkUpgradeId] then
+			branchCompleted = false
+		end
+	end
+	
+	return branchCompleted
+end
+
+function UpgradeController._getStatus(upgradeId, tireConfig, upgrades, permanentUpgrades, coins, dice)
+	if tireConfig.isPermanent and UpgradeController._isBranchComplete(upgradeId, upgrades, tireConfig) then
+		return "extinct"
 	end
 
 	if upgrades[upgradeId] then
 		return "owned"
 	end
 
-	if config.requires and not upgrades[config.requires] then
+	if tireConfig.requires and not upgrades[tireConfig.requires] then
 		return "locked"
 	end
 
-	local balance = config.currency == "coins" and coins or dice
-	if balance >= config.cost then
+	local balance = tireConfig.currency == "coins" and coins or dice
+	if balance >= tireConfig.cost then
 		return "buyable"
 	end
 
 	return "notenough"
 end
 
--- Returns a Color3 for the IconLabel indicator, based on the upgrade's effect type
-
--- Builds the status/cost text shown at the bottom of each tile
-function UpgradeController._getStatusText(status, config)
-	if status == "permanent" or status == "owned" then
-		return "✓ Owned"
-	end
-	if status == "locked" then
-		local reqConfig = UpgradeConfig[config.requires]
-		local reqName = reqConfig and reqConfig.displayName or config.requires
-		return "Locked: " .. reqName
-	end
-	return tostring(config.cost) .. " " .. config.currency
-end
-
--- ============================================================================
--- RENDER
--- ============================================================================
-
--- Destroys all existing upgrade tile instances in the Board, then creates new
--- ones from scratch based on the latest player data. Preserves pan/zoom state
--- across re-renders.
 function UpgradeController._renderUpgrades()
 	-- --- 1.  Centre the cluster on the very first render  ---
 	if not hasRenderedOnce then
@@ -128,7 +147,7 @@ function UpgradeController._renderUpgrades()
 
 	-- --- 3.  Destroy old nodes (keep UIScale and any non-ImageButton children)  ---
 	for _, child in board:GetChildren() do
-		if child:IsA("ImageButton") then
+		if child:IsA("CanvasGroup") then
 			child:Destroy()
 		end
 	end
@@ -138,78 +157,79 @@ function UpgradeController._renderUpgrades()
 	local permanentUpgrades = PlayerDataClient.get("permanentUpgrades") or {}
 	local coins = PlayerDataClient.get("coins") or 0
 	local dice = PlayerDataClient.get("dice") or 0
-	
+
 	-- --- 5.  Create a tile for every upgrade defined in config  ---
-	for upgradeId, config in UpgradeConfig do
-		local pos = config.nodePosition
+
+	for upgradeId, tireConfig in UpgradeConfig do
+		local pos = tireConfig.nodePosition
 		if not pos then continue end
 
-		local status = UpgradeController._getStatus(upgradeId, config, upgrades, permanentUpgrades, coins, dice)
-		
+		local status = UpgradeController._getStatus(upgradeId, tireConfig, upgrades, permanentUpgrades, coins, dice)
+
 		-- Clone the template and position it in the Board
-		local tile = tileTemplate:Clone()
-		tile.Name = upgradeId
-		tile.Position = UDim2.fromOffset(pos.x, pos.y)
-
-		-- Configure IconLabel as a coloured indicator based on effect type
-		local iconLabel = tile.IconLabel
-		iconLabel.Image = config.icon
+		local itemTile = itemTileTemplate:Clone()
+		itemTile.Name = upgradeId
+		itemTile.Position = UDim2.fromOffset(pos.x, pos.y)
 		
-		local nameLabel = tile.NameLabel
-		nameLabel.Text = config.displayName
-		
-		local priceLabel = tile.Price.PriceLabel
-		local currencyImage = tile.Price.CurrencyImage
+		local tileButton = itemTile.TileButton
+		local iconLabel = tileButton.IconLabel
+		iconLabel.Image = tireConfig.icon
 
-		if status == "permanent" then
-			tile.ImageColor3 = STATUS_COLORS.permanent
-			tile.Active = false
-			tile.AutoButtonColor = false
-			tile.Visible = true
-			priceLabel.Text = "Owned"
+		local nameLabel = tileButton.NameLabel
+		nameLabel.Text = tireConfig.displayName
+
+		local priceLabel = tileButton.Price.PriceLabel
+		local currencyImage = tileButton.Price.CurrencyImage
+		
+		if status == "extinct" then
+			itemTile.GroupTransparency = 0.7
+			tileButton.ImageColor3 = STATUS_COLORS.permanent
+			tileButton.Active = false
+			tileButton.AutoButtonColor = false
+			tileButton.Visible = true
+			priceLabel.Text = ""
 			currencyImage.Image = ""
 		elseif status == "owned" then
-			tile.ImageColor3 = STATUS_COLORS.owned
-			tile.Active = false
-			tile.AutoButtonColor = false
-			tile.Visible = true
-			priceLabel.Text = "Owned"
+			tileButton.ImageColor3 = STATUS_COLORS.owned
+			tileButton.Active = false
+			tileButton.AutoButtonColor = false
+			tileButton.Visible = true
+			priceLabel.Text = ""
 			currencyImage.Image = ""
 		elseif status == "locked" then
-			tile.ImageColor3 = STATUS_COLORS.locked
-			tile.Active = false
-			tile.AutoButtonColor = false
-			tile.Visible = false
+			tileButton.ImageColor3 = STATUS_COLORS.locked
+			tileButton.Active = false
+			tileButton.AutoButtonColor = false
+			tileButton.Visible = false
 			priceLabel.Text = "Locked"
 			currencyImage.Image = ""
 		elseif status == "notenough" then
-			tile.ImageColor3 = STATUS_COLORS.notenough
-			tile.Active = false
-			tile.AutoButtonColor = false
-			tile.Visible = true
-			priceLabel.Text = tostring(config.cost)
+			tileButton.ImageColor3 = STATUS_COLORS.notenough
+			tileButton.Active = false
+			tileButton.AutoButtonColor = false
+			tileButton.Visible = true
+			priceLabel.Text = tostring(tireConfig.cost)
 			priceLabel.TextColor3 = Color3.fromRGB(120, 0, 0)
-			currencyImage.Image = config.currency == "coins"
+			currencyImage.Image = tireConfig.currency == "coins"
 				and "rbxassetid://122995436726509"
 				or "rbxassetid://132804116237326"
 		else
-			tile.ImageColor3 = STATUS_COLORS.buyable
-			tile.Active = true
-			tile.AutoButtonColor = true
-			tile.Visible = true
-			priceLabel.Text = tostring(config.cost)
+			tileButton.ImageColor3 = STATUS_COLORS.buyable
+			tileButton.Active = true
+			tileButton.AutoButtonColor = true
+			tileButton.Visible = true
+			priceLabel.Text = tostring(tireConfig.cost)
 			priceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-			currencyImage.Image = config.currency == "coins"
+			currencyImage.Image = tireConfig.currency == "coins"
 				and "rbxassetid://122995436726509"
 				or "rbxassetid://132804116237326"
 
-			tile.Activated:Connect(function()
-				if drag.thresholdMet then return end
+			tileButton.Activated:Connect(function()
 				Remotes.PurchaseUpgrade:FireServer(upgradeId)
 			end)
 		end
 
-		tile.Parent = board
+		itemTile.Parent = board
 	end
 
 	-- --- 6.  Restore pan / zoom  ---
@@ -227,7 +247,7 @@ function UpgradeController._setupInput()
 	local startInputPosition = nil
 	local prevOffsetX = 0
 	local prevOffsetY = 0
-	
+
 	UserInputService.InputBegan:Connect(function(inputObject, gameProcessed)
 		if inputObject.UserInputType == Enum.UserInputType.MouseButton1
 			or inputObject.UserInputType == Enum.UserInputType.Touch then
@@ -237,15 +257,15 @@ function UpgradeController._setupInput()
 			startInputPosition = inputObject.Position
 		end
 	end)
-	
+
 	UserInputService.InputEnded:Connect(function(inputObject, gameProcessed)
 		if inputObject.UserInputType == Enum.UserInputType.MouseButton1
 			or inputObject.UserInputType == Enum.UserInputType.Touch then
 			isDrag = false
-			
+
 		end
 	end)
-	
+
 	UserInputService.InputChanged:Connect(function(inputObject, gameProcessed)
 		if isDrag then
 			local inputOffsetRelative = startInputPosition - inputObject.Position
