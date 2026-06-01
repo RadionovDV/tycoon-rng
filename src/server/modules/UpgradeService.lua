@@ -26,6 +26,12 @@ function UpgradeService.Purchase(player, upgradeId)
 		return
 	end
 
+	-- Reject if permanently owned (survived rebirth)
+	local permanentUpgrades = PlayerService.GetValue(player, "permanentUpgrades") or {}
+	if permanentUpgrades[upgradeId] then
+		return
+	end
+
 	-- Check prerequisite upgrade
 	if config.requires and not owned[config.requires] then
 		return
@@ -44,6 +50,15 @@ function UpgradeService.Purchase(player, upgradeId)
 		list[upgradeId] = true
 		return list
 	end)
+
+	-- If the upgrade is permanent, also record it in permanentUpgrades immediately.
+	-- This ensures it survives a server restart + rebirth cycle without data loss.
+	if config.isPermanent then
+		PlayerService.UpdateValue(player, "permanentUpgrades", function(list)
+			list[upgradeId] = true
+			return list
+		end)
+	end
 
 	-- Apply the upgrade's effect to the relevant stat
 	if config.effect == "luck" then
@@ -86,6 +101,8 @@ function UpgradeService.Purchase(player, upgradeId)
 		local CombatService = require(script.Parent.CombatService)
 		CombatService.SpawnEnemiesForPlayer(player)
 	end
+	-- offlineIncome, unlockDailyReward, unlockMicroReward, unlockQuestSystem effects
+	-- are no-ops: the upgrade is already recorded in the `upgrades` dict above.
 end
 
 function UpgradeService.StartListening()

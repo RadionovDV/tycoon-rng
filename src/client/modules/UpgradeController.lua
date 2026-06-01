@@ -35,10 +35,11 @@ local UpgradeController = {}
 
 -- Tile background colors for each purchase status
 local STATUS_COLORS = {
-	owned     = Color3.fromRGB(74, 168, 230),    -- dark green
-	buyable   = Color3.fromRGB(43, 43, 43),  -- blue
-	locked    = Color3.fromRGB(81, 0, 1),    -- dark gray
-	notenough = Color3.fromRGB(0, 0, 0),   -- dark orange
+	owned     = Color3.fromRGB(74, 168, 230),
+	buyable   = Color3.fromRGB(43, 43, 43),
+	locked    = Color3.fromRGB(81, 0, 1),
+	notenough = Color3.fromRGB(0, 0, 0),
+	permanent = Color3.fromRGB(30, 30, 30),
 }
 
 -- ============================================================================
@@ -64,8 +65,12 @@ local hasRenderedOnce = false
 -- ============================================================================
 
 -- Determines the status of a single upgrade for the current player.
--- @return string: "owned", "buyable", "locked", or "notenough"
-function UpgradeController._getStatus(upgradeId, config, upgrades, coins, dice)
+-- @return string: "permanent", "owned", "buyable", "locked", or "notenough"
+function UpgradeController._getStatus(upgradeId, config, upgrades, permanentUpgrades, coins, dice)
+	if permanentUpgrades[upgradeId] then
+		return "permanent"
+	end
+
 	if upgrades[upgradeId] then
 		return "owned"
 	end
@@ -86,7 +91,7 @@ end
 
 -- Builds the status/cost text shown at the bottom of each tile
 function UpgradeController._getStatusText(status, config)
-	if status == "owned" then
+	if status == "permanent" or status == "owned" then
 		return "✓ Owned"
 	end
 	if status == "locked" then
@@ -130,20 +135,21 @@ function UpgradeController._renderUpgrades()
 
 	-- --- 4.  Read current player data  ---
 	local upgrades = PlayerDataClient.get("upgrades") or {}
+	local permanentUpgrades = PlayerDataClient.get("permanentUpgrades") or {}
 	local coins = PlayerDataClient.get("coins") or 0
 	local dice = PlayerDataClient.get("dice") or 0
 	
 	-- --- 5.  Create a tile for every upgrade defined in config  ---
 	for upgradeId, config in UpgradeConfig do
 		local pos = config.nodePosition
+		if not pos then continue end
 
-		local status = UpgradeController._getStatus(upgradeId, config, upgrades, coins, dice)
+		local status = UpgradeController._getStatus(upgradeId, config, upgrades, permanentUpgrades, coins, dice)
 		
 		-- Clone the template and position it in the Board
 		local tile = tileTemplate:Clone()
 		tile.Name = upgradeId
 		tile.Position = UDim2.fromOffset(pos.x, pos.y)
-		tile.ImageColor3 = STATUS_COLORS[status]
 
 		-- Configure IconLabel as a coloured indicator based on effect type
 		local iconLabel = tile.IconLabel
@@ -153,30 +159,54 @@ function UpgradeController._renderUpgrades()
 		nameLabel.Text = config.displayName
 		
 		local priceLabel = tile.Price.PriceLabel
-		priceLabel.Text = config.cost
-		
 		local currencyImage = tile.Price.CurrencyImage
-		currencyImage.Image = if config.currency == "coins"
-			then "rbxassetid://122995436726509"
-			else "rbxassetid://132804116237326"
 
-
-		tile.Visible = status ~= "locked"
-		
-		if status ~= "buyable" then
+		if status == "permanent" then
+			tile.ImageColor3 = STATUS_COLORS.permanent
 			tile.Active = false
 			tile.AutoButtonColor = false
+			tile.Visible = true
+			priceLabel.Text = "Owned"
+			currencyImage.Image = ""
+		elseif status == "owned" then
+			tile.ImageColor3 = STATUS_COLORS.owned
+			tile.Active = false
+			tile.AutoButtonColor = false
+			tile.Visible = true
+			priceLabel.Text = "Owned"
+			currencyImage.Image = ""
+		elseif status == "locked" then
+			tile.ImageColor3 = STATUS_COLORS.locked
+			tile.Active = false
+			tile.AutoButtonColor = false
+			tile.Visible = false
+			priceLabel.Text = "Locked"
+			currencyImage.Image = ""
+		elseif status == "notenough" then
+			tile.ImageColor3 = STATUS_COLORS.notenough
+			tile.Active = false
+			tile.AutoButtonColor = false
+			tile.Visible = true
+			priceLabel.Text = tostring(config.cost)
+			priceLabel.TextColor3 = Color3.fromRGB(120, 0, 0)
+			currencyImage.Image = config.currency == "coins"
+				and "rbxassetid://122995436726509"
+				or "rbxassetid://132804116237326"
 		else
+			tile.ImageColor3 = STATUS_COLORS.buyable
+			tile.Active = true
+			tile.AutoButtonColor = true
+			tile.Visible = true
+			priceLabel.Text = tostring(config.cost)
+			priceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+			currencyImage.Image = config.currency == "coins"
+				and "rbxassetid://122995436726509"
+				or "rbxassetid://132804116237326"
+
 			tile.Activated:Connect(function()
-				if drag.thresholdMet then
-					return
-				end
+				if drag.thresholdMet then return end
 				Remotes.PurchaseUpgrade:FireServer(upgradeId)
 			end)
-		end
-		
-		if status == "notenough" then
-			priceLabel.TextColor3 = Color3.fromRGB(120, 0, 0)
 		end
 
 		tile.Parent = board
@@ -239,13 +269,15 @@ end
 -- Updates the HUD notification badge and re-renders the upgrade tree.
 function UpgradeController.UpdateNotifications()
 	local upgrades = PlayerDataClient.get("upgrades") or {}
+	local permanentUpgrades = PlayerDataClient.get("permanentUpgrades") or {}
 	local coins = PlayerDataClient.get("coins") or 0
 	local dice = PlayerDataClient.get("dice") or 0
 
 	-- Count affordable upgrades for the red notification badge
 	local count = 0
 	for upgradeId, config in UpgradeConfig do
-		if upgrades[upgradeId] then
+		if not config.nodePosition then continue end
+		if upgrades[upgradeId] or permanentUpgrades[upgradeId] then
 			continue
 		end
 		if config.requires and not upgrades[config.requires] then
@@ -264,12 +296,8 @@ function UpgradeController.UpdateNotifications()
 		redPoint.Visible = false
 	end
 
-	-- Re-render the tree (wrapped in pcall for safety)
+	-- Re-render the tree
 	UpgradeController._renderUpgrades()
-	--local success, err = pcall(UpgradeController._renderUpgrades)
-	--if not success then
-	--	warn(string.format("UpgradeController render error: %s", tostring(err)))
-	--end
 end
 
 -- ============================================================================

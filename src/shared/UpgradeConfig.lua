@@ -2,6 +2,7 @@
 -- Defines the upgrade tree. Each upgrade has a cost, currency type, prerequisite,
 -- effect type, and value. The tree branches from the first upgrades outward.
 -- Effects: luck (multiplier), rollCooldown (reduction), maxEquipSlots (+), unlockAutoRoll, unlockRocks, enemyCount (+)
+-- isPermanent: true => upgrade survives rebirth and becomes dimmed in the tree.
 return {
 	luck_1 = {
 		cost = 10, 
@@ -27,6 +28,7 @@ return {
 		displayName = "Shop", description = "Unlock shop for more benefits",
 		icon = "rbxassetid://118554800883386",
 		nodePosition = { x = 1240, y = 1000 },
+		isPermanent = true,
 	},
 	rollspeed_1 = {
 		cost = 30, currency = "dice", requires = "luck_2",
@@ -48,6 +50,7 @@ return {
 		displayName = "Index", description = "Find out how much is left",
 		icon = "rbxassetid://118367980795800",
 		nodePosition = { x = 1240, y = 1420 },
+		isPermanent = true,
 	},
 	
 	extraslot_1 = {
@@ -70,6 +73,7 @@ return {
 		displayName = "Rebirth", description = "Unlock rebirth for more benefits",
 		icon = "rbxassetid://98256223082322",
 		nodePosition = { x = 640, y = 1070 },
+		isPermanent = true,
 	},
 	
 	moreenemies_1 = {
@@ -100,6 +104,7 @@ return {
 		displayName = "Auto Roll", description = "Automatically rolls pets",
 		icon = "rbxassetid://108780071692774",
 		nodePosition = { x = 880, y = 790 },
+		isPermanent = true,
 	},
 	rocks_unlock = {
 		cost = 500, currency = "coins", requires = "moreenemies_2",
@@ -107,5 +112,69 @@ return {
 		displayName = "Rocks Unlock", description = "Unlocks Rocks currency from enemies",
 		icon = "rbxassetid://110971351869251",
 		nodePosition = { x = 1240, y = 720 },
+	},
+
+	-- Offline Income branch (4 tiers)
+	offline_income_1 = {
+		cost = 500, currency = "coins", requires = "rocks_unlock",
+		effect = "offlineIncome", value = true,
+		displayName = "Bucket I", description = "Offline coin bucket unlocked",
+		icon = "rbxassetid://83955876596707",
+		nodePosition = { x = 1380, y = 720 },
+		isPermanent = true,
+	},
+	offline_income_2 = {
+		cost = 1000, currency = "coins", requires = "offline_income_1",
+		effect = "offlineIncome", value = true,
+		displayName = "Rate I", description = "Faster coin accumulation",
+		icon = "rbxassetid://83955876596707",
+		nodePosition = { x = 1380, y = 640 },
+		isPermanent = true,
+	},
+	offline_income_3 = {
+		cost = 2000, currency = "coins", requires = "offline_income_2",
+		effect = "unlockRocks", value = true,
+		displayName = "Bucket II", description = "Unlocks rock accumulation",
+		icon = "rbxassetid://83955876596707",
+		nodePosition = { x = 1380, y = 560 },
+		isPermanent = true,
+	},
+	offline_income_4 = {
+		cost = 4000, currency = "coins", requires = "offline_income_3",
+		effect = "offlineIncome", value = true,
+		displayName = "Rate II", description = "Faster rock accumulation",
+		icon = "rbxassetid://83955876596707",
+		nodePosition = { x = 1380, y = 480 },
+		isPermanent = true,
+	},
+
+	-- Daily Rewards unlock node
+	daily_reward_unlock = {
+		cost = 2000, currency = "coins", requires = "shop",
+		effect = "unlockDailyReward", value = true,
+		displayName = "Daily Rewards", description = "Unlock daily reward system",
+		icon = "rbxassetid://83955876596707",
+		nodePosition = { x = 1400, y = 1000 },
+		isPermanent = true,
+	},
+
+	-- Micro Rewards unlock node
+	micro_reward_unlock = {
+		cost = 1500, currency = "coins", requires = "rollspeed_2",
+		effect = "unlockMicroReward", value = true,
+		displayName = "Micro Rewards", description = "Unlock time-gated micro rewards",
+		icon = "rbxassetid://83955876596707",
+		nodePosition = { x = 1400, y = 1280 },
+		isPermanent = true,
+	},
+
+	-- Quest System unlock node
+	quest_system = {
+		cost = 10000, currency = "coins", requires = "index",
+		effect = "unlockQuestSystem", value = true,
+		displayName = "Quests", description = "Unlock quest system",
+		icon = "rbxassetid://83955876596707",
+		nodePosition = { x = 1400, y = 1420 },
+		isPermanent = true,
 	},
 }

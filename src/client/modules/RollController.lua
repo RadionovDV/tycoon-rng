@@ -47,10 +47,12 @@ local RollController = {}
 
 -- Shows/hides the AutoRoll and HideRoll buttons based on whether the player
 -- owns the autoll upgrade. Reads from upgrades dict for reliable post-rebirth sync.
+-- Also checks permanentUpgrades so autoll survives rebirth.
 -- Called on init and whenever upgrades or autoRollUnlocked changes.
 function RollController.UpdateAutoRollVisibility(rebirth)
 	local upgrades = PlayerDataClient.get("upgrades") or {}
-	local unlocked = upgrades.autoll == true
+	local permanentUpgrades = PlayerDataClient.get("permanentUpgrades") or {}
+	local unlocked = upgrades.autoll == true or permanentUpgrades.autoll == true
 	autoRoll.Visible = unlocked
 	hideRoll.Visible = unlocked
 	if rebirth then

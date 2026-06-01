@@ -16,6 +16,7 @@ local BackpackController = require(module.BackpackController)
 local MenuController = require(module.MenuController)
 local RebirthController = require(module.RebirthController)
 local VisibilityController = require(module.VisibilityController)
+local OfflineIncomeController = require(module.OfflineIncomeController)
 
 PlayerDataClient.start()
 
@@ -32,6 +33,7 @@ local GameClient = {
 		LocationController = LocationController,
 		BackpackController = BackpackController,
 		RebirthController = RebirthController,
+		OfflineIncomeController = OfflineIncomeController,
 	},
 }
 
@@ -44,6 +46,10 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 	elseif valueName == "rebirthBonusLuck" or valueName == "luck" then
 		EconomyController.UpdateDisplay()
 	elseif valueName == "upgrades" then
+		UpgradeController.UpdateNotifications()
+		VisibilityController.Refresh()
+		RollController.UpdateAutoRollVisibility()
+	elseif valueName == "permanentUpgrades" then
 		UpgradeController.UpdateNotifications()
 		VisibilityController.Refresh()
 		RollController.UpdateAutoRollVisibility()
@@ -95,5 +101,8 @@ LocationController.UpdateGateStates()
 RebirthController.Refresh()
 VisibilityController.Refresh()
 RollController.UpdateAutoRollVisibility()
+
+-- Start controllers that need event listeners
+OfflineIncomeController.Start()
 
 return GameClient

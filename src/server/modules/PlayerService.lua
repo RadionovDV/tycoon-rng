@@ -31,6 +31,13 @@ local DEFAULT_DATA = {
 	rebirthBonusLuck = 0,
 	enemyCount = 1,
 	enemyKills = 0,
+	permanentUpgrades = {},
+	dailyRewardProgress = 0,
+	dailyRewardLastClaim = 0,
+	microRewardLastClaim = {},
+	offlineIncomeLastSeen = 0,
+	offlineIncomeWarned = 0,
+	questProgress = { stage = 1, parts = {0, 0, 0} },
 }
 
 PlayerService.DEFAULT_DATA = DEFAULT_DATA
