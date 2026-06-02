@@ -194,12 +194,61 @@ local UpgradeConfig = {
 		icon = "rbxassetid://122178881489757",
 		isPermanent = true,
 	},
+	daily_reward_level_1 = {
+		cost = 4000, currency = "coins", 
+		effect = "unlockDailyReward", value = true,
+		displayName = "DR Level I", description = "Increase max combo to 3 days",
+		icon = "rbxassetid://122178881489757",
+		isPermanent = true,
+	},
+	daily_reward_level_2 = {
+		cost = 6000, currency = "coins", 
+		effect = "unlockDailyReward", value = true,
+		displayName = "DR Level II", description = "Increase max combo to 4 days",
+		icon = "rbxassetid://122178881489757",
+		isPermanent = true,
+	},
+	daily_reward_level_3 = {
+		cost = 8000, currency = "coins", 
+		effect = "unlockDailyReward", value = true,
+		displayName = "DR Level III", description = "Increase max combo to 5 days",
+		icon = "rbxassetid://122178881489757",
+		isPermanent = true,
+	},
+	daily_reward_level_4 = {
+		cost = 10000, currency = "coins", 
+		effect = "unlockDailyReward", value = true,
+		displayName = "DR Level IV", description = "Increase max combo to 6 days",
+		icon = "rbxassetid://122178881489757",
+		isPermanent = true,
+	},
+	daily_reward_level_5 = {
+		cost = 12000, currency = "coins", 
+		effect = "unlockDailyReward", value = true,
+		displayName = "DR Level V", description = "Increase max combo to 7 days",
+		icon = "rbxassetid://122178881489757",
+		isPermanent = true,
+	},
 
 	-- Micro Rewards unlock node
 	micro_reward_unlock = {
 		cost = 1500, currency = "coins", 
 		effect = "unlockMicroReward", value = true,
 		displayName = "Micro Rewards", description = "Unlock time-gated micro rewards",
+		icon = "rbxassetid://76179577512196",
+		isPermanent = true,
+	},
+	micro_reward_level_1 = {
+		cost = 3000, currency = "coins", 
+		effect = "unlockMicroReward", value = true,
+		displayName = "MR Level I", description = "Unlock 60 min reward tier",
+		icon = "rbxassetid://76179577512196",
+		isPermanent = true,
+	},
+	micro_reward_level_2 = {
+		cost = 6000, currency = "coins", 
+		effect = "unlockMicroReward", value = true,
+		displayName = "MR Level II", description = "Unlock 120 min reward tier",
 		icon = "rbxassetid://76179577512196",
 		isPermanent = true,
 	},
@@ -217,19 +266,6 @@ local UpgradeConfig = {
 local function setPosition(config)
 	local tileInstances = upgradeTileInstaller:GetChildren()
 	
-	--for key, _ in pairs(config) do
-	--	local index = table.find(tileInstances, key)
-	--	if not index then continue end
-		
-	--	local tileInstance = tileInstances[index] :: Instance
-	--	key.nodePosition = {
-	--		x = tileInstance.Position.X.Offset, 
-	--		y = tileInstance.Position.Y.Offset
-	--	}
-		
-	--	key.requires = tileInstance:GetAttribute("requires")
-	--end
-	
 	for _, tileInstance in upgradeTileInstaller:GetChildren() do
 		if tileInstance:IsA("ImageButton") or tileInstance:IsA("CanvasGroup") then
 			local tireConfig = config[tileInstance.Name]
@@ -246,9 +282,6 @@ local function setPosition(config)
 
 			tireConfig.requires = tileInstance:GetAttribute("requires")
 
-			--if tileInstance.Name == "offline_income_1" then
-			--	print(tireConfig)
-			--end
 		end
 	end
 	

@@ -17,6 +17,8 @@ local MenuController = require(module.MenuController)
 local RebirthController = require(module.RebirthController)
 local VisibilityController = require(module.VisibilityController)
 local OfflineIncomeController = require(module.OfflineIncomeController)
+local DailyRewardController = require(module.DailyRewardController)
+local MicroRewardController = require(module.MicroRewardController)
 
 PlayerDataClient.start()
 
@@ -34,6 +36,8 @@ local GameClient = {
 		BackpackController = BackpackController,
 		RebirthController = RebirthController,
 		OfflineIncomeController = OfflineIncomeController,
+		DailyRewardController = DailyRewardController,
+		MicroRewardController = MicroRewardController,
 	},
 }
 
@@ -72,6 +76,8 @@ PlayerDataClient.updated:Connect(function(valueName, value)
 		VisibilityController.Refresh()
 	elseif valueName == "autoRollUnlocked" then
 		RollController.UpdateAutoRollVisibility()
+	elseif valueName == "dailyRewardDay" or valueName == "dailyRewardClaimed" then
+		UpgradeController.UpdateNotifications()
 	end
 end)
 
@@ -104,5 +110,7 @@ RollController.UpdateAutoRollVisibility()
 
 -- Start controllers that need event listeners
 OfflineIncomeController.Start()
+DailyRewardController.Start()
+MicroRewardController.Start()
 
 return GameClient

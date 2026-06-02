@@ -108,15 +108,19 @@ function UpgradeController._isBranchComplete(upgradeId, ownedUpgrades)
 end
 
 function UpgradeController._getStatus(upgradeId, tireConfig, upgrades, permanentUpgrades, coins, dice)
-	if tireConfig.isPermanent and UpgradeController._isBranchComplete(upgradeId, upgrades, tireConfig) then
+	local combinedUpgrades = {}
+	for id, _ in upgrades do combinedUpgrades[id] = true end
+	for id, _ in permanentUpgrades do combinedUpgrades[id] = true end
+
+	if tireConfig.isPermanent and UpgradeController._isBranchComplete(upgradeId, combinedUpgrades) then
 		return "extinct"
 	end
 
-	if upgrades[upgradeId] then
+	if combinedUpgrades[upgradeId] then
 		return "owned"
 	end
 
-	if tireConfig.requires and not upgrades[tireConfig.requires] then
+	if tireConfig.requires and not combinedUpgrades[tireConfig.requires] then
 		return "locked"
 	end
 
@@ -306,6 +310,32 @@ function UpgradeController.UpdateNotifications()
 		local balance = config.currency == "coins" and coins or dice
 		if balance >= config.cost then
 			count += 1
+		end
+	end
+
+	-- Count claimable Daily Reward
+	local dailyRewardDay = PlayerDataClient.get("dailyRewardDay") or 1
+	local dailyRewardClaimed = PlayerDataClient.get("dailyRewardClaimed") or {}
+
+	if upgrades["daily_reward_unlock"] or permanentUpgrades["daily_reward_unlock"] then
+		if not dailyRewardClaimed[dailyRewardDay] then
+			count += 1
+		end
+	end
+
+	-- Count claimable Micro Reward tiers
+	local microRewardLastClaim = PlayerDataClient.get("microRewardLastClaim") or {}
+	local microTiers = {
+		{ upgradeId = "micro_reward_unlock", interval = 30 * 60, key = "tier1" },
+		{ upgradeId = "micro_reward_level_1", interval = 60 * 60, key = "tier2" },
+		{ upgradeId = "micro_reward_level_2", interval = 120 * 60, key = "tier3" },
+	}
+	for _, tier in microTiers do
+		if upgrades[tier.upgradeId] or permanentUpgrades[tier.upgradeId] then
+			local last = microRewardLastClaim[tier.key] or 0
+			if os.time() - last >= tier.interval then
+				count += 1
+			end
 		end
 	end
 

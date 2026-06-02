@@ -21,8 +21,9 @@ local SKIP_FIELDS = {
 	rebirthBonusLuck = true,
 	enemyKills = true,
 	permanentUpgrades = true,
-	dailyRewardProgress = true,
-	dailyRewardLastClaim = true,
+	dailyRewardDay = true,
+	dailyRewardClaimed = true,
+	dailyRewardLastSeen = true,
 	microRewardLastClaim = true,
 	offlineIncomeLastSeen = true,
 	offlineIncomeWarned = true,
@@ -69,7 +70,6 @@ function RebirthService.PerformRebirth(player)
 
 	-- Save progress before reset
 	local currentUpgrades = PlayerService.GetValue(player, "upgrades") or {}
-	local dailyRewardProgress = PlayerService.GetValue(player, "dailyRewardProgress") or 0
 	local existingPerm = PlayerService.GetValue(player, "permanentUpgrades") or {}
 
 	-- Reset all fields to defaults (preserve skip fields)
@@ -86,11 +86,6 @@ function RebirthService.PerformRebirth(player)
 		if UpgradeConfig[id] and UpgradeConfig[id].isPermanent then
 			newPermanent[id] = true
 		end
-	end
-
-	-- Check special branches tracked outside upgrades dict
-	if dailyRewardProgress >= 7 then
-		newPermanent["daily_reward_unlock"] = true
 	end
 
 	-- Merge into existing permanentUpgrades
