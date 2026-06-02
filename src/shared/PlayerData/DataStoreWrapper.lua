@@ -37,7 +37,7 @@ export type ClassType = typeof(setmetatable(
 		_keyQueues: { [string]: ThreadQueue.ClassType },
 	},
 	DataStoreWrapper
-))
+	))
 
 function DataStoreWrapper.new(
 	name: string,
@@ -84,9 +84,9 @@ function DataStoreWrapper._attemptAsync(
 	if queue:getLength() == 0 then
 		self._keyQueues[key] = nil
 	end
-	
+
 	-- Return the success, result values from onQueuePop
-	
+
 	return table.unpack(queueReturnValues)
 end
 

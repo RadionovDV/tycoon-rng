@@ -38,9 +38,10 @@ function OfflineIncomeController._showPopup(data)
 
 	messageLabel.Text = message
 	confirmButton.Activated:Connect(function()
+		background.Visible = false
 		popup:Destroy()
 	end)
-
+	background.Visible = true
 	popup.Parent = background
 end
 

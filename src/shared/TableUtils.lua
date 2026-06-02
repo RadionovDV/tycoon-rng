@@ -65,4 +65,11 @@ function TableUtils.invertValuesToKeys<T>(source: { T }): { [T]: boolean }
 	return output
 end
 
+function TableUtils.objLength(obj)
+	local count = 0
+	for _ in pairs(obj) do count += 1 end
+	
+	return count
+end
+
 return TableUtils

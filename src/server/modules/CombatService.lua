@@ -89,7 +89,7 @@ function CombatService.SpawnEnemiesForPlayer(player)
 
 	local userId = player.UserId
 	local currentLocation = PlayerService.GetValue(player, "currentLocation") or "Location1"
-	
+
 	local locationData = LocationConfig[currentLocation]
 	if not locationData then return end
 

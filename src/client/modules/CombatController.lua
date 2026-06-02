@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local PlayerDataClient = require(ReplicatedStorage.PlayerData.PlayerDataClient)
 local PetConfig = require(ReplicatedStorage.PetConfig)
+local TableUtils = require(ReplicatedStorage.TableUtils)
 
 local player = Players.LocalPlayer
 
@@ -39,8 +40,7 @@ function CombatController.SpawnPet(petType, petId)
 	local model = modelTemplate:Clone()
 	model.Parent = Workspace
 
-	local entryCount = 0
-	for _ in petModels do entryCount = entryCount + 1 end
+	local entryCount = TableUtils.objLength(petModels)
 	local verticalOffset = (entryCount % 3 - 1) * 2
 
 	local hpBar = Instance.new("BillboardGui")
@@ -80,8 +80,7 @@ function CombatController.RemovePet(petId)
 		petModels[petId] = nil
 	end
 
-	local count = 0
-	for _ in petModels do count = count + 1 end
+	local count = TableUtils.objLength(petModels)
 	if count == 0 and heartbeatConn then
 		heartbeatConn:Disconnect()
 		heartbeatConn = nil
@@ -183,7 +182,7 @@ function CombatController.SyncCombatState(data)
 						hpLabel = hpLabel,
 						targetPosition = Vector3.new(eData.position.X, eData.position.Y, eData.position.Z),
 					}
-					
+
 					model:PivotTo(CFrame.new(enemyModels[enemyId].targetPosition))
 				end
 			else

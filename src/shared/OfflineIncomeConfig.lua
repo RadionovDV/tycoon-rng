@@ -2,7 +2,7 @@
 -- Defines parameters for the offline income system.
 return {
 	maxAccumulationHours = 12,
-	minOfflineMinutes = 5,
+	minOfflineMinutes = 0.05,
 	warnRepeatDays = 2,
 	tiers = {
 		capacity_coins = {

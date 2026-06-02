@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayerService = require(script.Parent.PlayerService)
 local EconomyService = require(script.Parent.EconomyService)
 local RarityCalculator = require(ReplicatedStorage.RarityCalculator)
+local TableUtils = require(ReplicatedStorage.TableUtils)
 
 local Remotes = ReplicatedStorage.Remotes
 
@@ -28,10 +29,7 @@ function RollService.Roll(player)
 	local rebirthLuck = PlayerService.GetValue(player, "rebirthBonusLuck") or 0
 	local effectiveLuck = luck + rebirthLuck
 	local petType, petData = RarityCalculator.Roll(effectiveLuck)
-
-	local petCount = PlayerService.GetValue(player, "pets") or {}
-	local petCountNum = 0
-	for _ in petCount do petCountNum += 1 end
+	local petCountNum = TableUtils.objLength(PlayerService.GetValue(player, "pets") or {})
 
 	local petId = string.format("%s_%d", petType, petCountNum + 1)
 

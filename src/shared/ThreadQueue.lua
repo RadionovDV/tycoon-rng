@@ -20,7 +20,7 @@ export type ClassType = typeof(setmetatable(
 		_enableConcurrency: boolean,
 	},
 	ThreadQueue
-))
+	))
 
 type Callback = (...any) -> ...any
 
@@ -53,9 +53,9 @@ function ThreadQueue.submitAsync(self: ClassType, callback: Callback)
 	}
 
 	table.insert(self._queue, queueEntry)
-	
+
 	self:_startQueue()
-	
+
 	return coroutine.yield() 
 end
 
@@ -102,7 +102,7 @@ function ThreadQueue._popQueueAsync(self: ClassType)
 		-- The task.spawn is used to resume the calling thread with the pcall'd results of the callback.
 		task.spawn(entry.thread, pcall(entry.callback))
 	end
-	
+
 	-- If concurrency is enabled, we do not want to yield the queue while we wait for the callback to return
 	if self._enableConcurrency then
 		-- Use spawn to call execute so entry.callback doesn't block us from proceeding

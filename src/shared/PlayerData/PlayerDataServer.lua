@@ -237,7 +237,7 @@ function PlayerDataServer._onPlayerAddedAsync(player: Player)
 			PlayerDataServer._playerData[player] = if GameConfig.resetData
 				then TableUtils.deepCopy(PlayerDataServer._defaultData) :: PlayerData
 				else (result or TableUtils.deepCopy(PlayerDataServer._defaultData)) :: PlayerData
-			print(PlayerDataServer._playerData[player])
+			
 			PlayerDataServer._playerDataSynced[player] =
 				TableUtils.deepCopy(PlayerDataServer._playerData[player]) :: PlayerData
 		else

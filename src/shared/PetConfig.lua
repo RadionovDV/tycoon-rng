@@ -2,7 +2,7 @@
 -- Defines all obtainable pet types with their rarity weights, damage values, and display metadata.
 -- Weight sum = 1040. Higher weight = more common. Luck multiplier divides non-Common weights.
 local PET_LIST = {
-	{ id = "Common_Pebble",  weight = 500, rarity = "Common",    damage = 50,   hp = 20,  displayName = "Pebble"  },
+	{ id = "Common_Pebble",  weight = 500, rarity = "Common",    damage = 5,   hp = 20,  displayName = "Pebble"  },
 	{ id = "Common_Rock",    weight = 300, rarity = "Common",    damage = 8,   hp = 30,  displayName = "Rock"    },
 	{ id = "Uncommon_Cobble",weight = 200, rarity = "Uncommon",  damage = 20,  hp = 50,  displayName = "Cobble"  },
 	{ id = "Rare_Boulder",   weight = 50,  rarity = "Rare",      damage = 60,  hp = 100, displayName = "Boulder" },
