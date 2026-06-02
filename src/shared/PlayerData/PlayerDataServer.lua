@@ -9,6 +9,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
 
 local Signal = require(ReplicatedStorage.Signal)
 local noYield = require(ReplicatedStorage.noYield)
@@ -18,6 +19,7 @@ local SessionLockedDataStoreWrapper = require(ReplicatedStorage.PlayerData.Sessi
 local safePlayerAdded = require(ReplicatedStorage.PlayerData.safePlayerAdded)
 local getMaxRequestTime = require(ReplicatedStorage.PlayerData.getMaxRequestTime)
 local PlayerDataErrorType = require(ReplicatedStorage.PlayerData.PlayerDataErrorType)
+local GameConfig = require(ReplicatedFirst.GameConfig)
 
 local playerDataLoaded = ReplicatedStorage.Remotes.PlayerDataLoaded
 local playerDataUpdated = ReplicatedStorage.Remotes.PlayerDataUpdated
@@ -34,7 +36,7 @@ export type PlayerData = { [string]: any }
 
 -- We only want to load from the DataStore in a live server, or when ALLOW_STUDIO_ACCESS is true in a published studio session
 -- The code below will show a warning in the console when DataStores are disabled
-local dataStoresEnabled = false
+local dataStoresEnabled = true
 
 if RunService:IsStudio() and dataStoresEnabled then
 	-- If the PlaceId is zero, the game is not published
@@ -78,7 +80,7 @@ PlayerDataServer._started = false
 
 function PlayerDataServer.start(defaultValue: PlayerData, dataStoreName: string, privateValueNames: { string }?)
 	assert(not PlayerDataServer._started, "PlayerDataServer has already been started")
-	
+
 	dataStoreName = dataStoreName or DEFAULT_DATA_STORE_NAME
 
 	PlayerDataServer._started = true
@@ -157,7 +159,7 @@ function PlayerDataServer.getValue(player: Player, valueName: string, syncedValu
 	if typeof(value) == "table" then
 		value = TableUtils.deepCopy(value)
 	end
-	
+
 	return value
 end
 
@@ -224,18 +226,18 @@ end
 function PlayerDataServer._onPlayerAddedAsync(player: Player)
 	local hasErrored = false
 	local errorType = PlayerDataErrorType.DataStoreError
-	
+
 	if dataStoresEnabled then
 		local key = PlayerDataServer._getKey(player)
 
 		-- We need to pass the player's userId into the SessionLockedDataStoreWrapper so it can correctly
 		-- tag it for compliance reasons when it writes the session lock metadata
 		local success, result = PlayerDataServer._sessionLockedWrapper:getAsync(key, nil, { tonumber(PlayerDataServer._getKey(player)) :: number })
-
-		if success then
-			PlayerDataServer._playerData[player] = (
-				result or TableUtils.deepCopy(PlayerDataServer._defaultData)
-			) :: PlayerData
+		if success then			
+			PlayerDataServer._playerData[player] = if GameConfig.resetData
+				then TableUtils.deepCopy(PlayerDataServer._defaultData) :: PlayerData
+				else (result or TableUtils.deepCopy(PlayerDataServer._defaultData)) :: PlayerData
+			print(PlayerDataServer._playerData[player])
 			PlayerDataServer._playerDataSynced[player] =
 				TableUtils.deepCopy(PlayerDataServer._playerData[player]) :: PlayerData
 		else
@@ -253,7 +255,7 @@ function PlayerDataServer._onPlayerAddedAsync(player: Player)
 		-- If Data Store access is not permitted, we will treat the load as an error
 		hasErrored = true
 	end
-	
+
 	if hasErrored then
 		-- If the player's data load has errored - we still want to allow them to play the game with default data
 		PlayerDataServer._playerData[player] = TableUtils.deepCopy(PlayerDataServer._defaultData) :: PlayerData
@@ -285,10 +287,10 @@ function PlayerDataServer._sendLoadedData(player: Player)
 			return not PlayerDataServer._privateValueNames[valueName]
 		end
 	) :: PlayerData
-	
+
 	local success = not PlayerDataServer.hasLoaded(player)
 	local errorType = PlayerDataServer._playerDataLoadErrors[player]
-	
+
 	-- Now the data has loaded, we want to resume any threads that were yielded by PlayerDataServer.waitForDataLoadAsync
 	PlayerDataServer._resumeThreadsPendingLoad(player)
 
@@ -318,7 +320,7 @@ function PlayerDataServer.onPlayerRemovingAsync(player: Player)
 	PlayerDataServer._playerDataLoadErrors[player] = nil
 	PlayerDataServer._playerDataMetadata[player] = nil
 	PlayerDataServer._threadsPendingPlayerDataLoad[player] = nil
-
+	
 	if canSave then
 		PlayerDataServer._savePlayerDataAsync(player, data, true)
 	end
@@ -353,7 +355,6 @@ function PlayerDataServer._savePlayerDataAsync(player: Player, data: any, unlock
 			expiryTime = AUTO_SAVE_INTERVAL * 2, -- We want our lock to expire long after the auto save interval to ensure the lock isn't lifted during a session
 		}
 	)
-
 	if not success then
 		-- As the player's data has failed to save this could be a data loss scenario!
 		warn("Failed to save player data: " .. tostring(result))
@@ -376,7 +377,7 @@ function PlayerDataServer._savePlayerDataAsync(player: Player, data: any, unlock
 	if success then
 		PlayerDataServer._playerDataSynced[player] = dataSubmitted
 	end
-	
+
 	return success, result
 end
 
@@ -437,6 +438,7 @@ function PlayerDataServer._bindSavingToGameClose()
 		while not PlayerDataServer._sessionLockedWrapper:areAllQueuesEmpty() do
 			task.wait(0)
 		end
+		task.wait(1)
 	end)
 end
 

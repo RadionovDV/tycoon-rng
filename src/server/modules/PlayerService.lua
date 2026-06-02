@@ -4,9 +4,11 @@
 -- via Signal for each player whose data has finished loading.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
 
 local PlayerDataServer = require(ReplicatedStorage.PlayerData.PlayerDataServer)
 local Signal = require(ReplicatedStorage.Signal)
+local GameConfig = require(ReplicatedFirst.GameConfig)
 
 local PlayerService = {}
 
@@ -40,6 +42,12 @@ local DEFAULT_DATA = {
 	questProgress = { stage = 1, parts = {0, 0, 0} },
 }
 
+if GameConfig.isCheat then
+	DEFAULT_DATA.coins = 100000
+	DEFAULT_DATA.rocks = 100000
+	DEFAULT_DATA.dice = 100000
+end
+
 PlayerService.DEFAULT_DATA = DEFAULT_DATA
 
 -- Fires with (player) once the player's data is fully loaded and ready
@@ -47,7 +55,7 @@ PlayerService.PlayerReady = Signal.new()
 
 function PlayerService.Start()
 	PlayerDataServer.start(DEFAULT_DATA)
-
+	
 	-- Handle existing players already in the server
 	for _, player in Players:GetPlayers() do
 		task.spawn(function()
@@ -62,6 +70,10 @@ function PlayerService.Start()
 			PlayerDataServer.waitForDataLoadAsync(player)
 			PlayerService.PlayerReady:Fire(player)
 		end)
+	end)
+	
+	Players.PlayerRemoving:Connect(function(player)
+		PlayerDataServer.onPlayerRemovingAsync(player)
 	end)
 end
 

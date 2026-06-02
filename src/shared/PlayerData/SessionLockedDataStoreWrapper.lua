@@ -50,7 +50,7 @@ export type ClassType = typeof(setmetatable(
 		_activeLockIds: { [string]: string },
 	},
 	SessionLockedDataStoreWrapper
-))
+	))
 
 function SessionLockedDataStoreWrapper.new(
 	name: string,
@@ -89,7 +89,7 @@ function SessionLockedDataStoreWrapper._isKeySafeToUpdate(
 
 	local keyInfo = optionalKeyInfo :: DataStoreKeyInfo
 	local metadata: { [string]: any } = keyInfo:GetMetadata()
-	
+
 	if self._activeLockIds[key] then
 		-- If this server has locked this key, we need to verify the lock is still in place
 		if self._activeLockIds[key] ~= metadata.lockId then
@@ -100,7 +100,7 @@ function SessionLockedDataStoreWrapper._isKeySafeToUpdate(
 			return false
 		end
 	elseif metadata.lockId then
-		print(os.difftime(os.time(), keyInfo.UpdatedTime / 1000), lockSettings.expiryTime)
+		--print(os.difftime(os.time(), keyInfo.UpdatedTime / 1000), lockSettings.expiryTime)
 		-- Locked keys should be refreshed regularly, if the key hasn't been updated in some time
 		-- we can assume the server with the active session is finished but has failed to unlock (crashed, or bad implementation)
 		if os.difftime(os.time(), keyInfo.UpdatedTime / 1000) > lockSettings.expiryTime then
@@ -123,7 +123,7 @@ function SessionLockedDataStoreWrapper._lockMetadata(
 	metadata: { [any]: any }
 ): { [any]: any }
 	local existingLockId = self._activeLockIds[key]
-	
+
 	-- We only need to generate a new lock identifier if it hasn't already been set
 	if not metadata.lockId or metadata.lockId ~= existingLockId then
 		return TableUtils.merge(metadata, { lockId = HttpService:GenerateGUID() })
@@ -148,7 +148,7 @@ function SessionLockedDataStoreWrapper._requestAsync(
 	local lockTime = os.clock()
 
 	local keyWasSafeToUpdate = true
-	
+
 	-- Session locking requires _everything_ is routed through UpdateAsync calls so that the key can be
 	-- read AND written atomically. This allows us to verify the key is safe to write to, and write to it
 	-- at the same time.
@@ -156,21 +156,21 @@ function SessionLockedDataStoreWrapper._requestAsync(
 		key,
 		function(currentValue: any, currentKeyInfo: DataStoreKeyInfo?)
 			-- If the key is deemed 'unsafe' to write to, we only want to proceed when lockSettings.overwriteLock is true
-			
-			if not self:_isKeySafeToUpdate(key, lockSettings, currentKeyInfo) and not lockSettings.overwriteLock then
-				keyWasSafeToUpdate = false
-				return nil
-			end
-			
+
+			--if not self:_isKeySafeToUpdate(key, lockSettings, currentKeyInfo) and not lockSettings.overwriteLock then
+			--	keyWasSafeToUpdate = false
+			--	return nil
+			--end
+
 			-- Substitute stand-ins for nil with an actual nil value (see comment below)
 			if currentValue == NIL_STRING_PLACEHOLDER then
 				currentValue = nil
 			end
-
+			
 			-- To prevent race conditions we do not allow transformCallback to yield
 			local value, userIds, metadata = noYield(transformCallback, currentValue, currentKeyInfo)
 			metadata = metadata or {}
-			
+
 			-- We cannot return nil or the key metadata will not be updated, so instead we will use a stand-in
 			-- string that we will substitute for nil later
 			if value == nil then
@@ -193,7 +193,7 @@ function SessionLockedDataStoreWrapper._requestAsync(
 		function(operation)
 			local abortAttempts = false
 			local operationSuccess, operationResult, operationKeyInfo = pcall(operation)
-			
+
 			if not keyWasSafeToUpdate then
 				operationSuccess = abortAttempts
 				operationResult = self.sessionLockErrorString
@@ -203,7 +203,7 @@ function SessionLockedDataStoreWrapper._requestAsync(
 			return abortAttempts, operationSuccess, operationResult, operationKeyInfo
 		end
 	)
-
+	
 	if success then
 		-- Substitute nil stand-in for actual nil value (see comment above)
 		if result == NIL_STRING_PLACEHOLDER then
@@ -309,7 +309,7 @@ function SessionLockedDataStoreWrapper.getAsync(
 	return self:_requestAsync(key, function(value: any, keyInfo: DataStoreKeyInfo)
 		local userIds = if keyInfo then keyInfo:GetUserIds() else nil 
 		local metadata = if keyInfo then keyInfo:GetMetadata() else nil
-		
+
 		-- Although this is a get request, as this get actually saves, we need to make sure we
 		-- are writing to the userIds list for compliance reasons
 		local oldUserIds = userIds or {}
@@ -332,7 +332,6 @@ function SessionLockedDataStoreWrapper.setAsync(
 ): (boolean, string?)
 	return self:_requestAsync(key, function()
 		local metadata = if options then options:GetMetadata() else nil
-
 		return value, userIds, metadata
 	end, lockSettings)
 end
