@@ -20,6 +20,24 @@
 
 - **PetConfig attackRate/attackRange (ADDED)**: Added `attackRate` (0.5–1.2s) and `attackRange` (25–32) fields to all 8 pets.
 
+- **isPermanent upgrades (ADDED)**: `UpgradeConfig` now has `isPermanent` flag on selected nodes (autoll, shop, index, rebirth, daily_reward_*, micro_reward_*, offline_income_*, quest_system). Purchase records in both `upgrades` + `permanentUpgrades`. Rebirth preserves via SKIP_FIELDS + merge.
+
+- **UpgradeConfig dynamic loading (ADDED)**: `setPosition()` reads `nodePosition` from `UpgradeTileInstaller` ImageButtons in Studio. `requires` from `GetAttribute("requires")`. `buildUpgradeTree()` builds `children` from reverse `requires` lookup for isPermanent nodes.
+
+- **Offline Income system (ADDED)**: Four offline_income upgrade nodes. `OfflineIncomeService` calculates accumulated coins/rocks on player join (12h cap, 5min minimum). `OfflineIncomeController` shows ConfirmationMenu popup.
+
+- **Daily Reward system (ADDED)**: 7-day cycle with `daily_reward_unlock` + 5 `daily_reward_level` upgrades. Server advances/resets day on entry. Client renders 7 tiles in `MenuGui.Upgrade.DailyReward`. maxCombo (2→7) controlled by purchased levels.
+
+- **Micro Reward system (ADDED)**: 3 timer tiers (30/60/120 min) unlocked via `micro_reward_unlock` + `micro_reward_level_1/2`. Client renders 3 tiles in `MenuGui.Upgrade.MicroReward` with countdown timers.
+
+- **Branch completion check (ADDED)**: `UpgradeController._isBranchComplete()` traverses parents+children of isPermanent nodes. When all owned → shows as `"extinct"` (dimmed, `GroupTransparency=0.7`).
+
+- **UpgradeController notifications (ENHANCED)**: Notification badge now counts affordable upgrades + claimable daily reward + claimable micro rewards.
+
+- **_getStatus merged upgrades (CHANGED)**: Uses `combinedUpgrades` (upgrades + permanentUpgrades) for branch check, ownership check, and prerequisite check — ensures owned permanent upgrades unlock locked children.
+
+- **PlayerData schema (EXPANDED)**: +7 new fields (permanentUpgrades, dailyRewardDay, dailyRewardClaimed, dailyRewardLastSeen, microRewardLastClaim, offlineIncomeLastSeen, offlineIncomeWarned, questProgress). Replaced `dailyRewardProgress` with `dailyRewardDay` + `dailyRewardClaimed`.
+
 ## Known Issues
 
 ### 1. Circular requires (runtime, safe)
@@ -74,6 +92,24 @@ These two RemoteEvents are referenced in code (`ReplicatedStorage.Remotes.PetAtt
 ### 16. Enemy targeting may briefly target player if all pets are dead and re-appear mid-cooldown
 When all pets are dead, enemy targets player. When a pet revives, server checks every "ready" phase (max 1s delay). Client switches immediately via `_findNearestAlivePet`. Acceptable for MVP.
 
+### 17. New RemoteEvents for Daily/Micro/Offline systems must be created in Studio
+Five new RemoteEvents: `ShowOfflineIncome`, `ClaimDailyReward`, `DailyRewardStatus`, `ClaimMicroReward`, `MicroRewardStatus`. If absent, the corresponding services/controllers will not function (no event handler connected).
+
+### 18. DailyReward and MicroReward UI containers must exist in Studio
+`DailyRewardController` and `MicroRewardController` use `WaitForChild("DailyReward")` and `WaitForChild("MicroReward")` on `MenuGui.Upgrade` at module top-level. If these containers don't exist, the modules will not load.
+
+### 19. Upgraded UpgradeConfig now required from ReplicatedFirst
+`UpgradeController` and `RebirthService` require `UpgradeConfig` from `ReplicatedFirst` instead of `ReplicatedStorage`. The UpgradeConfig module reads `UpgradeTileInstaller` from `StarterGui.MenuGui.Upgrade.Canvas.Board` at load time for dynamic positioning. If the installer doesn't exist, the module errors.
+
+### 20. UpgradeTileInstaller ImageButtons must have correct Name and "requires" attribute
+`setPosition()` iterates children of `UpgradeTileInstaller`. Each tile's `Name` must match an `UpgradeConfig` key. The `requires` attribute string must match another config key (or be nil for root nodes). If a name doesn't match, it logs a warning and skips. Missing attributes silently leave `requires` as nil.
+
+### 21. MicroRewardController polls every 60s with task.spawn
+`MicroRewardController.Start()` spawns an infinite loop that fires `MicroRewardStatus:FireServer()` every 60s. If the GameClient script is stopped (e.g., player leaves), this thread leaks. Acceptable for MVP — PlayerRemoving handles cleanup via PlayerData.
+
+### 22. DailyRewardStatus and MicroRewardStatus are bidirectional
+Both events use the same RemoteEvent for C>S (request) and S>C (response). This works because `OnServerEvent` and `OnClientEvent` are separate callbacks on the same event, but it's non-standard.
+
 ## Risks — What NOT to Break
 
 1. **PlayerData system** — Do NOT modify `PlayerDataServer` or `PlayerDataClient` modules. Stable external dependencies.
@@ -88,7 +124,7 @@ When all pets are dead, enemy targets player. When a pet revives, server checks 
 
 6. **Pet HP is not persisted** — stored only in-memory `petCombat`. On server restart all pets are revived. Acceptable for MVP.
 
-7. **Rebirth uses PlayerService.DEFAULT_DATA** — RebirthService references `PlayerService.DEFAULT_DATA` for field reset. If DEFAULT_DATA structure changes, ensure RebirthService retains correct fields (rebirthCount, rebirthBonusLuck, enemyKills).
+7. **Rebirth uses PlayerService.DEFAULT_DATA** — RebirthService references `PlayerService.DEFAULT_DATA` for field reset. If DEFAULT_DATA structure changes, ensure RebirthService retains correct SKIP_FIELDS (rebirthCount, rebirthBonusLuck, enemyKills, permanentUpgrades, dailyRewardDay, dailyRewardClaimed, dailyRewardLastSeen, microRewardLastClaim, offlineIncomeLastSeen, offlineIncomeWarned, questProgress).
 
 8. **ViewingRoll is a cloned template** — `RollController` clones `ReplicatedStorage.UI.Objects.ViewingRoll` once at module load. If the template is renamed or moved, the `WaitForChild` call fails and the module doesn't load.
 
@@ -97,6 +133,12 @@ When all pets are dead, enemy targets player. When a pet revives, server checks 
 10. **PetEquipService now requires PetConfig at module scope** — `PetEquipService.lua` now has `local PetConfig = require(ReplicatedStorage.PetConfig)` at the top level. If PetConfig is renamed, moved, or fails to load, PetEquipService will not load and all equip/unequip operations will fail silently (no handler connected).
 
 11. **Combat module structure** — CombatService and CombatController are tightly coupled. Changes to the attack state machine fields (`attackPhase`, `attackState`, jump timing) must be mirrored in both files.
+
+12. **permanentUpgrades and upgrades must stay in sync** — `RebirthService` restores permanent upgrades to the `upgrades` dict so `_isBranchComplete()` works. If only one dict is updated (e.g., direct PlayerData edit), branches may show incorrect status.
+
+13. **UpgradeConfig requires from ReplicatedFirst** — `UpgradeController` and `RebirthService` now use `ReplicatedFirst.UpgradeConfig` (not `ReplicatedStorage`). If moved, the require will fail silently as `require()` returns `nil` for missing modules.
+
+14. **UpgradeTileInstaller must exist at module load** — `UpgradeConfig.lua` reads `StarterGui.MenuGui.Upgrade.Canvas.Board.UpgradeTileInstaller` at top-level. If removed or renamed, the module fails to load entirely, breaking the upgrade tree, rebirth, and all controllers that depend on it.
 
 ## Testing Notes
 - DataStore warning in Studio: expected when running unpublished. Game uses default data.
@@ -108,5 +150,11 @@ When all pets are dead, enemy targets player. When a pet revives, server checks 
 - Auto-roll: buy `autoll` upgrade → AutoRoll button visible in Roll window → click to start → ViewingRoll moves to GameplayGui.Autoroll → click again to stop → 1.5s animation → Roll window closes
 - UI gating: buy `rocks_unlock` → Rocks appears in HUD. Buy `shop` → Shop appears in RightSide. After rebirth all reset to hidden.
 - Auto-swap: equip `maxEquipSlots` pets (default 1), then roll a new pet → if autoEquip triggers but slot is full, Equip() should replace the equipped pet with the new one. The replaced pet stays in inventory.
-- Luck scaling: rebirth with `rebirthBonusLuck=30` (via RebirthConfig or manual DataStore edit), then roll → Divine/Epic/Legendary pets should appear noticeably more often, not less.
-- Combat animation: watch pet behavior — should detect enemy at 30 studs (Move toward), approach to 3 studs (Fight hops), then jump attack (0.25s to enemy, damage, 0.25s back). Enemy should focus one pet until it dies, then switch. When all pets dead, enemy moves toward player.
+- Luck scaling: rebirth with `rebirthBonusLuck=30`, then roll → Divine/Epic/Legendary pets should appear noticeably more often, not less.
+- Combat animation: watch pet behavior — should detect enemy at 30 studs (Move toward), approach to 3 studs (Fight hops), then jump attack (0.25s to enemy, damage, 0.25s back).
+- Permanent upgrades (extinct): buy all nodes in a permanent branch → all tiles should dim (GroupTransparency=0.7). Rebirth → branch stays dimmed immediately.
+- Offline income: wait 5+ minutes, rejoin → should see ConfirmationMenu popup with coins/rocks earned.
+- Daily Rewards: buy `daily_reward_unlock` → open Upgrade window → see 7 tiles in DailyReward container. Day 1 tile clickable. Wait 24h → day advances. Wait 48h+ → cycle resets.
+- Micro Rewards: buy `micro_reward_unlock` → see 30min tile in MicroReward container. Wait 30min → Claim available. Buy `level_1` → 60min tile appears. Buy `level_2` → 120min tile appears.
+- Notification badge: when upgrades affordable + daily claimable + micro claimable → red dot number = sum of all three.
+- Upgrade tree: new nodes (luck_3/4, rollspeed_3, extraslot_3, moreenemies_4, rocks_2/3/4, offline_income_1-4, daily_reward nodes, micro_reward nodes) should appear with correct positions from UpgradeTileInstaller.
