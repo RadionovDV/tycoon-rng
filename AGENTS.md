@@ -5,6 +5,7 @@
 1. **Прочитать все docs:**
    - `docs/PROJECT_STATE.md` — архитектура, что построено, ключевые файлы
    - `docs/KNOWN_ISSUES.md` — баги, риски, что НЕЛЬЗЯ ломать
+   - `docs/STAGE_3_PLAN.md` — что осталось сделать в CombatSystem
    - Этот файл (AGENTS.md) — конвенции разработки
 
 2. **Предложить короткий план** перед любыми правками. В плане указать:
@@ -36,11 +37,12 @@
   - `ReplicatedStorage.PlayerData.PlayerDataServer` / `PlayerDataClient`
   - `ReplicatedStorage.Signal`
   - `ReplicatedStorage.PetConfig`, `EnemyConfig`, `UpgradeConfig`, `LocationConfig`,
-    `RebirthConfig`, `RarityCalculator`, `FormatNumber`
+    `RebirthConfig`, `RarityCalculator`, `FormatNumber`, `CombatConfig`
   - `ReplicatedStorage.UI.Components.ItemTile`
   - `ReplicatedStorage.UI.Objects.ItemTileButton`
   - `ReplicatedStorage.UI.Objects.UpgradeTileButton`
   - `ReplicatedStorage.UI.Objects.ViewingRoll` (шаблон, клонируется в RollController)
+  - `ReplicatedStorage.UI.Objects.HealsBarGui` (шаблон, клонируется в CombatController)
 
 ## RemoteEvents в использовании
 
@@ -52,9 +54,11 @@
 | `PurchaseUpgrade` | C>S | Buy upgrade |
 | `UnlockLocation` | C>S | Unlock location (Gate) |
 | `EnemyDefeated` | S>C | Coin animation trigger + enemy cleanup |
-| `SyncCombatState` | S>C | Enemy/pet positions + HP sync every tick |
+| `SyncCombatState` | S>C | Enemy/pet HP deltas + new spawn positions (no full-state sync) |
 | `PetDefeated` | S>C | Pet death notification (transparency fade) |
 | `PetRevived` | S>C | Pet revive notification (transparency restore) |
+| `PetAttack` | S>C | Triggers pet attack animation (jumpTo enemy → damage → jumpBack) |
+| `EnemyAttack` | S>C | Triggers enemy attack animation (jumpTo pet → damage → jumpBack) |
 | `PerformRebirth` | C>S | Player initiates rebirth |
 | `PlayerDataLoaded` | S>C | PlayerData system |
 | `PlayerDataUpdated` | S>C | PlayerData system |
@@ -103,8 +107,10 @@ ReplicatedStorage/
 │   ├── ViewingRoll (template with PetIcon + NameLabel + RarityLabel)
 │   ├── ConfirmationMenu (Frame template with Body/MessageLabel + Body/ConfirmButton)
 │   ├── GateBillboardGui (template)
-│   └── GateSurfaceGui (template)
+│   ├── GateSurfaceGui (template)
+│   └── HealsBarGui (template — cloned for pet/enemy HP bars)
 ├── UI/Components/ItemTile (module)
+├── CombatConfig (shared ModuleScript)
 └── Remotes/ (all RemoteEvents)
 
 ## ModuleScripts in ServerScriptService
@@ -115,7 +121,7 @@ ServerScriptService/
         ├── PlayerService.lua      — PlayerData lifecycle, GetValue/UpdateValue wrappers, DEFAULT_DATA schema
         ├── EconomyService.lua     — Currency add/subtract/canAfford, AddRocks checks rocksUnlocked
         ├── RollService.lua        — RNG, anti-spam, auto-equip
-        ├── CombatService.lua      — 1s tick: enemy movement, pet damage, respawn queue, revive
+        ├── CombatService.lua      — Heartbeat-loop: per-entity attack state machine, HP/shield, respawn/revive, per-tick SyncCombatState deltas
         ├── UpgradeService.lua     — Purchase validation, effect application (luck/cooldown/slots/unlocks/enemyCount)
         ├── LocationService.lua    — Unlock via Gate, Baseplate Touch → currentLocation
         ├── PetEquipService.lua    — Equip/Unequip validation + auto-swap on full slots (replaces highest-weight pet)
@@ -127,7 +133,7 @@ ServerScriptService/
 |---|---|
 | `EconomyController.lua` | Currency HUD (coins, rocks, luck, speed), AnimateCoin |
 | `RollController.lua` | Roll + AutoRoll: HUD button, ViewingRoll display, auto-roll loop |
-| `CombatController.lua` | 3D enemy/pet models, HP bars, orbit, death/revive transparency |
+| `CombatController.lua` | 3D enemy/pet models, procedural jumping, attack animation (jumpTo/jumpBack), HealsBarGui HP bars, Flat XZ look, Recovery state, ground tracking via Raycast (planned) |
 | `UpgradeController.lua` | Upgrade tree board (pan, no zoom), notifications badge |
 | `LocationController.lua` | Gate GUIs (create/restore/destroy), Rebirth Refresh |
 | `BackpackController.lua` | Pet inventory: ScrollingFrame + EquippedBoard |

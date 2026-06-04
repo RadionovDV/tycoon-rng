@@ -1,19 +1,31 @@
 -- CombatController.lua
 -- Client-side combat visual manager.
--- Spawns and orients 3D pet models orbiting the player, plus 3D enemy models
--- with HP bars. Handles pet death/revive transparency and enemy model cleanup.
+-- Pets follow player freely (no orbit) and trigger on nearby enemies.
+-- Enemies move independently using EnemyConfig values (no server position sync).
+-- Procedural jumping: arc-based PivotTo every 0.7s with state-dependent height/distance.
+-- Attack cycle: jumpTo(0.25s) → dealDamage(server) → jumpBack(0.25s) → cooldown → repeat.
+-- HP bars use BillboardGui.Fillbar.Filler.Size.X.Scale + CountLabel text.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local PlayerDataClient = require(ReplicatedStorage.PlayerData.PlayerDataClient)
 local PetConfig = require(ReplicatedStorage.PetConfig)
-local TableUtils = require(ReplicatedStorage.TableUtils)
+local EnemyConfig = require(ReplicatedStorage.EnemyConfig)
+local CombatConfig = require(ReplicatedStorage.CombatConfig)
 
 local player = Players.LocalPlayer
 
-local orbitRadius = 5
-local orbitSpeed = 0.6
+local healsBarTemplate = ReplicatedStorage.UI.Objects:WaitForChild("HealsBarGui")
+
+local PET_DETECTION_RANGE = CombatConfig.PET_DETECTION_RANGE
+local PET_ATTACK_RANGE = CombatConfig.PET_ATTACK_RANGE
+local PET_FOLLOW_RADIUS_MIN = 2
+local PET_FOLLOW_RADIUS_MAX = 5
+local JUMP_INTERVAL = 0.7
+local JUMP_DURATION = 0.7
+local ATTACK_JUMP_DURATION = 0.25
+local ATTACK_JUMP_HEIGHT = 2.0
 
 local CombatController = {}
 
@@ -21,15 +33,130 @@ local petModels = {}
 local enemyModels = {}
 local heartbeatConn = nil
 
-local rarityColors = {
-	Common = Color3.fromRGB(180, 180, 180),
-	Uncommon = Color3.fromRGB(100, 200, 100),
-	Rare = Color3.fromRGB(80, 150, 255),
-	Epic = Color3.fromRGB(180, 80, 255),
-	Legendary = Color3.fromRGB(255, 180, 50),
-	Divine = Color3.fromRGB(255, 80, 80),
-}
+-- Calculates jump height based on state and travel distance
+local function _getJumpHeight(state, travelDist)
+	if state == "Idle" then
+		return 0.4
+	elseif state == "Move" then
+		local ratio = math.min(travelDist / 8, 1)
+		return 0.6 + ratio * 0.6
+	else
+		return 1.4
+	end
+end
 
+-- Determines the closest enemy to a given position, returns position and distance
+local function _findNearestEnemy(pos)
+	local nearestDist = math.huge
+	local nearestPos = nil
+	for _, entry in enemyModels do
+		local dist = (entry.position - pos).Magnitude
+		if dist < nearestDist then
+			nearestDist = dist
+			nearestPos = entry.position
+		end
+	end
+	return nearestPos, nearestDist
+end
+
+-- Determines the closest alive pet to a given position, returns position and distance
+local function _findNearestAlivePet(pos)
+	local nearestDist = math.huge
+	local nearestPos = nil
+	for _, entry in petModels do
+		if entry.isDefeated then continue end
+		local dist = (entry.position - pos).Magnitude
+		if dist < nearestDist then
+			nearestDist = dist
+			nearestPos = entry.position
+		end
+	end
+	return nearestPos, nearestDist
+end
+
+-- Executes a procedural jump arc for one pet/enemy
+local function _applyJump(entry, dt)
+	entry.jumpTimer = entry.jumpTimer + dt
+	if entry.jumpTimer >= JUMP_INTERVAL then
+		entry.jumpTimer = entry.jumpTimer - JUMP_INTERVAL
+		entry.jumpProgress = 0
+		entry.jumpStart = entry.position
+
+		local state = entry.state
+		local jumpEnd = entry.position
+		local travelDist = 0
+
+		if state == "Idle" then
+			travelDist = 0
+		elseif state == "Move" then
+			travelDist = (entry.targetPos - entry.position).Magnitude
+			jumpEnd = entry.position + (entry.targetPos - entry.position).Unit * math.min(travelDist, 6)
+		elseif state == "Fight" then
+			entry.fightDir = entry.fightDir or 1
+			local hopDist = 2.5
+			travelDist = hopDist
+			jumpEnd = entry.position + entry.fightDirection * hopDist * entry.fightDir
+			entry.fightDir = -entry.fightDir
+		end
+
+		entry.jumpEnd = jumpEnd
+		entry.jumpHeight = _getJumpHeight(state, travelDist)
+	end
+
+	if entry.jumpProgress < 1 then
+		local speed = 1 / JUMP_DURATION
+		entry.jumpProgress = math.min(entry.jumpProgress + dt * speed, 1)
+		local t = entry.jumpProgress
+		local pos = entry.jumpStart:Lerp(entry.jumpEnd, t)
+		local yOffset = math.sin(t * math.pi) * entry.jumpHeight
+		entry.position = Vector3.new(pos.X, entry.jumpStart.Y + yOffset, pos.Z)
+	end
+end
+
+-- Creates a random follow offset for a pet around the player
+local function _randomPetOffset()
+	local angle = math.random() * math.pi * 2
+	local radius = PET_FOLLOW_RADIUS_MIN + math.random() * (PET_FOLLOW_RADIUS_MAX - PET_FOLLOW_RADIUS_MIN)
+	return Vector3.new(
+		math.cos(angle) * radius,
+		math.random() * 2 - 1,
+		math.sin(angle) * radius
+	)
+end
+
+-- Processes an attack animation phase (jumpTo or jumpBack) for one entity
+-- Returns true if the entity was in attack phase (override normal movement)
+local function _processAttackPhase(entry, dt)
+	if not entry.attackPhase then return false end
+
+	entry.jumpProgress = math.min(entry.jumpProgress + dt / ATTACK_JUMP_DURATION, 1)
+	local t = entry.jumpProgress
+	local pos = entry.jumpStart:Lerp(entry.jumpEnd, t)
+	local yOffset = math.sin(t * math.pi) * ATTACK_JUMP_HEIGHT
+	entry.position = Vector3.new(pos.X, entry.jumpStart.Y + yOffset, pos.Z)
+
+	if entry.jumpProgress >= 1 then
+		if entry.attackPhase == "jumpTo" then
+			entry.attackPhase = "jumpBack"
+			entry.jumpStart = entry.position
+			entry.jumpEnd = entry.attackReturnPos
+			entry.jumpProgress = 0
+		elseif entry.attackPhase == "jumpBack" then
+			entry.attackPhase = nil
+			entry.jumpProgress = 1
+		end
+	end
+	return true
+end
+
+-- Finds AnimationController.Animator in a model, returns nil if missing
+local function _findAnimator(model)
+	local animCtrl = model:FindFirstChildOfClass("AnimationController")
+	if not animCtrl then return nil end
+	return animCtrl:FindFirstChildOfClass("Animator")
+end
+
+-- Spawns a 3D pet model near the player with random offset and HealsBarGui
 function CombatController.SpawnPet(petType, petId)
 	local modelTemplate = ReplicatedStorage:FindFirstChild("PetModels")
 		and ReplicatedStorage.PetModels:FindFirstChild(petType)
@@ -40,39 +167,52 @@ function CombatController.SpawnPet(petType, petId)
 	local model = modelTemplate:Clone()
 	model.Parent = Workspace
 
-	local entryCount = TableUtils.objLength(petModels)
-	local verticalOffset = (entryCount % 3 - 1) * 2
+	local billboard = healsBarTemplate:Clone()
+	billboard.Adornee = model.BillboardAttachment
+	billboard.Parent = model
+	local filler = billboard:FindFirstChild("Fillbar") and billboard.Fillbar:FindFirstChild("Filler")
+	local countLabel = billboard:FindFirstChild("CountLabel")
+	local animator = _findAnimator(model)
 
-	local hpBar = Instance.new("BillboardGui")
-	hpBar.Size = UDim2.new(0, 100, 0, 20)
-	hpBar.StudsOffset = Vector3.new(0, 3, 0)
-	hpBar.AlwaysOnTop = true
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	local spawnPos = rootPart and rootPart.Position or Vector3.new()
 
-	local hpLabel = Instance.new("TextLabel")
-	hpLabel.Size = UDim2.new(1, 0, 1, 0)
-	hpLabel.BackgroundTransparency = 1
-	hpLabel.TextColor3 = Color3.new(1, 1, 1)
-	hpLabel.TextScaled = true
-	hpLabel.Text = "HP: ?/?"
-	hpLabel.Parent = hpBar
-
-	hpBar.Parent = model
+	local offset = _randomPetOffset()
 
 	petModels[petId] = {
 		model = model,
-		angle = (entryCount * 2.1) % (math.pi * 2),
-		verticalOffset = verticalOffset,
-		hpBar = hpBar,
-		hpLabel = hpLabel,
+		animator = animator,
+		state = "Idle",
+		filler = filler,
+		countLabel = countLabel,
+		isDefeated = false,
+		attackPhase = nil,
+		attackReturnPos = Vector3.new(),
+		hp = 0,
+		maxHp = 0,
+		position = spawnPos + offset,
+		targetPos = spawnPos + offset,
+		followOffset = offset,
+		jumpTimer = 0,
+		jumpProgress = 1,
+		jumpStart = spawnPos + offset,
+		jumpEnd = spawnPos + offset,
+		jumpHeight = 0,
+		fightDir = 1,
+		petType = petType,
 	}
+
+	model:PivotTo(CFrame.new(spawnPos + offset))
 
 	if not heartbeatConn then
 		heartbeatConn = RunService.Heartbeat:Connect(function(dt)
-			CombatController._updateOrbit(dt)
+			CombatController._updateCombat(dt)
 		end)
 	end
 end
 
+-- Removes a pet model and cleans up Heartbeat if no pets remain
 function CombatController.RemovePet(petId)
 	local entry = petModels[petId]
 	if entry then
@@ -80,13 +220,18 @@ function CombatController.RemovePet(petId)
 		petModels[petId] = nil
 	end
 
-	local count = TableUtils.objLength(petModels)
-	if count == 0 and heartbeatConn then
+	local petCount = 0
+	for _ in petModels do petCount = petCount + 1 end
+	local enemyCount = 0
+	for _ in enemyModels do enemyCount = enemyCount + 1 end
+
+	if petCount == 0 and enemyCount == 0 and heartbeatConn then
 		heartbeatConn:Disconnect()
 		heartbeatConn = nil
 	end
 end
 
+-- Reconciles petModels with PlayerData equipped pets
 function CombatController.SyncEquippedPets()
 	if not PlayerDataClient.hasLoaded() then
 		return
@@ -113,137 +258,289 @@ function CombatController.SyncEquippedPets()
 	end
 end
 
-function CombatController._updateOrbit(dt)
+-- Main heartbeat loop: updates pet and enemy positions, states, and animations
+function CombatController._updateCombat(dt)
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	if not rootPart then
+	if not rootPart or not rootPart:IsA("BasePart") then
 		return
 	end
 
-	local centerPos = rootPart.Position
+	local playerPos = rootPart.Position
 
+	-- Update pets
 	for petId, entry in petModels do
-		entry.angle = (entry.angle + orbitSpeed * dt) % (math.pi * 2)
-		local offset = Vector3.new(
-			math.cos(entry.angle) * orbitRadius,
-			entry.verticalOffset + 1,
-			math.sin(entry.angle) * orbitRadius
-		)
-		local targetCF = CFrame.new(centerPos + offset) * CFrame.Angles(0, -entry.angle, 0)
-		entry.model:PivotTo(targetCF)
+		if entry.isDefeated then
+			entry.jumpProgress = 1
+			continue
+		end
+
+		if _processAttackPhase(entry, dt) then
+			local flatLook = Vector3.new(entry.jumpEnd.X - entry.position.X, 0, entry.jumpEnd.Z - entry.position.Z)
+			if flatLook.Magnitude > 0.01 then
+				entry.model:PivotTo(CFrame.lookAt(entry.position, entry.position + flatLook.Unit))
+			end
+			continue
+		end
+
+		local distToPlayer = (entry.position - playerPos).Magnitude
+		local nearestEnemyPos, distToEnemy = _findNearestEnemy(entry.position)
+
+		if nearestEnemyPos and distToEnemy < PET_DETECTION_RANGE then
+			if distToEnemy <= PET_ATTACK_RANGE then
+				entry.state = "Fight"
+				entry.fightDirection = (nearestEnemyPos - entry.position).Unit
+				local targetPos = nearestEnemyPos - entry.fightDirection * 3
+				entry.targetPos = targetPos
+			else
+				entry.state = "Move"
+				entry.targetPos = nearestEnemyPos
+			end
+		elseif distToPlayer > 7 then
+			entry.state = "Move"
+			entry.targetPos = playerPos + entry.followOffset
+		else
+			entry.state = "Idle"
+			entry.targetPos = entry.position
+		end
+
+		_applyJump(entry, dt)
+
+		local lookDir = (entry.targetPos - entry.position).Magnitude > 0.1
+			and (entry.targetPos - entry.position).Unit
+			or (playerPos - entry.position).Unit
+		if lookDir.Magnitude > 0 then
+			local flatDir = Vector3.new(lookDir.X, 0, lookDir.Z)
+			if flatDir.Magnitude > 0.01 then
+				entry.model:PivotTo(CFrame.lookAt(entry.position, entry.position + flatDir.Unit))
+			end
+		end
 	end
 
-	local playerPos = rootPart.Position
+	-- Update enemies
 	for enemyId, entry in enemyModels do
-		if entry.targetPosition then
-			local currentPos = entry.model:GetPivot().Position
-			local newPos = currentPos:Lerp(entry.targetPosition, 0.2)
-			local lookAt = CFrame.lookAt(newPos, playerPos)
-			entry.model:PivotTo(lookAt)
+		if _processAttackPhase(entry, dt) then
+			entry.model:PivotTo(CFrame.lookAt(entry.position, entry.targetPos or playerPos))
+			continue
+		end
+
+		local nearestPetPos = _findNearestAlivePet(entry.position)
+		local targetFollowPos = nearestPetPos or playerPos
+
+		local distToTarget = (entry.position - targetFollowPos).Magnitude
+
+		if distToTarget > entry.attackRange then
+			entry.state = "Move"
+			local direction = (targetFollowPos - entry.position).Unit
+			local jumpDistance = math.min(entry.movementSpeed * 0.7, distToTarget - entry.attackRange + 1)
+			entry.targetPos = entry.position + direction * jumpDistance
+			entry.fightDirection = direction
+		else
+			entry.state = "Fight"
+			entry.fightDirection = (entry.position - targetFollowPos).Unit
+			local idealDist = entry.attackRange * 0.8
+			local targetPos = targetFollowPos + entry.fightDirection * idealDist
+			entry.targetPos = targetPos
+		end
+
+		_applyJump(entry, dt)
+
+		if entry.position then
+			entry.model:PivotTo(CFrame.lookAt(entry.position, targetFollowPos))
 		end
 	end
 end
 
+-- Triggers pet attack jump animation toward the target enemy
+local function _onPetAttack(data)
+	local entry = petModels[data.petId]
+	local enemyEntry = enemyModels[data.enemyId]
+	if not entry or not enemyEntry or entry.isDefeated then return end
+
+	entry.attackPhase = "jumpTo"
+	entry.attackReturnPos = entry.position
+	entry.jumpStart = entry.position
+	entry.jumpEnd = enemyEntry.position
+	entry.jumpProgress = 0
+end
+
+-- Triggers enemy attack jump animation toward the target position
+local function _onEnemyAttack(data)
+	local entry = enemyModels[data.enemyId]
+	if not entry then return end
+ 
+	local targetPos = Vector3.new(data.targetPosition.X, data.targetPosition.Y, data.targetPosition.Z)
+
+	local entry = enemyModels[data.enemyId]
+	local targetPos = entry.targetPos
+	
+	entry.attackPhase = "jumpTo"
+	entry.attackReturnPos = entry.position
+	entry.jumpStart = entry.position
+	entry.jumpEnd = targetPos
+	entry.jumpProgress = 0
+end
+
+-- Handles SyncCombatState from server: spawns, HP updates, death removal, clearAll
 function CombatController.SyncCombatState(data)
 	if not data then return end
 
-	for enemyId, eData in data.enemies do
-		if not eData.isAlive then
-			if enemyModels[enemyId] then
-				enemyModels[enemyId].model:Destroy()
-				enemyModels[enemyId] = nil
+	if data.clearAll then
+		for _, entry in enemyModels do
+			entry.model:Destroy()
+		end
+		enemyModels = {}
+
+		local petCount = 0
+		for _ in petModels do petCount = petCount + 1 end
+		if petCount == 0 and heartbeatConn then
+			heartbeatConn:Disconnect()
+			heartbeatConn = nil
+		end
+		return
+	end
+
+	if data.newSpawns then
+		for enemyId, spawnData in data.newSpawns do
+			if enemyModels[enemyId] then continue end
+
+			local template = ReplicatedStorage:FindFirstChild("EnemyModels")
+				and ReplicatedStorage.EnemyModels:FindFirstChild(spawnData.type)
+			if template then
+				local model = template:Clone()
+				model.Parent = Workspace
+
+				local spawnPos = Vector3.new(
+					spawnData.spawnPosition.X,
+					spawnData.spawnPosition.Y,
+					spawnData.spawnPosition.Z
+				)
+				model:PivotTo(CFrame.new(spawnPos))
+
+				local billboard = healsBarTemplate:Clone()
+				billboard.Adornee = model.BillboardAttachment
+				billboard.Parent = model
+				local filler = billboard:FindFirstChild("Fillbar") and billboard.Fillbar:FindFirstChild("Filler")
+				local countLabel = billboard:FindFirstChild("CountLabel")
+				local animator = _findAnimator(model)
+				local config = EnemyConfig.Map[spawnData.type]
+
+				if not heartbeatConn then
+					heartbeatConn = RunService.Heartbeat:Connect(function(dt)
+						CombatController._updateCombat(dt)
+					end)
+				end
+
+				enemyModels[enemyId] = {
+					model = model,
+					animator = animator,
+					state = "Move",
+					filler = filler,
+					countLabel = countLabel,
+					attackPhase = nil,
+					attackReturnPos = Vector3.new(),
+					hp = 0,
+					maxHp = 0,
+					position = spawnPos,
+					targetPos = spawnPos,
+					jumpTimer = math.random() * 0.5,
+					jumpProgress = 1,
+					jumpStart = spawnPos,
+					jumpEnd = spawnPos,
+					jumpHeight = 0,
+					fightDir = 1,
+					fightDirection = Vector3.new(),
+					enemyType = spawnData.type,
+					attackRange = config and config.attackRange or 15,
+					movementSpeed = config and config.movementSpeed or 8,
+				}
 			end
-		else
-			if not enemyModels[enemyId] then
-				local template = ReplicatedStorage:FindFirstChild("EnemyModels")
-					and ReplicatedStorage.EnemyModels:FindFirstChild(eData.type)
-				if template then
-					local model = template:Clone() :: MeshPart
-					model.Parent = Workspace
+		end
+	end
 
-					local hpBar = Instance.new("BillboardGui")
-					hpBar.Size = UDim2.new(0, 100, 0, 20)
-					hpBar.StudsOffset = Vector3.new(0, 3, 0)
-					hpBar.AlwaysOnTop = true
-
-					local hpLabel = Instance.new("TextLabel")
-					hpLabel.Size = UDim2.new(1, 0, 1, 0)
-					hpLabel.BackgroundTransparency = 1
-					hpLabel.TextColor3 = Color3.new(1, 0, 0)
-					hpLabel.TextScaled = true
-					hpLabel.Text = ""
-					hpLabel.Parent = hpBar
-
-					hpBar.Parent = model
-
-					enemyModels[enemyId] = {
-						model = model,
-						hpBar = hpBar,
-						hpLabel = hpLabel,
-						targetPosition = Vector3.new(eData.position.X, eData.position.Y, eData.position.Z),
-					}
-
-					model:PivotTo(CFrame.new(enemyModels[enemyId].targetPosition))
+	if data.enemies then
+		for enemyId, eData in data.enemies do
+			if not eData.isAlive then
+				local entry = enemyModels[enemyId]
+				if entry then
+					entry.model:Destroy()
+					enemyModels[enemyId] = nil
 				end
 			else
-				enemyModels[enemyId].targetPosition = Vector3.new(eData.position.X, eData.position.Y, eData.position.Z)
-			end
-
-			if enemyModels[enemyId] and enemyModels[enemyId].hpLabel then
-				enemyModels[enemyId].hpLabel.Text = string.format("HP: %d/%d", eData.hp, eData.maxHp)
+				local entry = enemyModels[enemyId]
+				if entry then
+					entry.hp = eData.hp
+					entry.maxHp = eData.maxHp
+					if entry.filler and entry.maxHp > 0 then
+						entry.filler.Size = UDim2.new(entry.hp / entry.maxHp, 0, 1, 0)
+					end
+					if entry.countLabel then
+						entry.countLabel.Text = string.format("%d/%d", entry.hp, entry.maxHp)
+					end
+				end
 			end
 		end
 	end
 
-	-- Destroy enemy models that no longer exist in the sync data
-	-- (happens on location change — old enemies are cleared server-side)
-	local orphanedEnemyIds = {}
-	for enemyId in enemyModels do
-		if not data.enemies[enemyId] then
-			table.insert(orphanedEnemyIds, enemyId)
-		end
-	end
-	for _, enemyId in orphanedEnemyIds do
-		enemyModels[enemyId].model:Destroy()
-		enemyModels[enemyId] = nil
-	end
-
-	for petId, pData in data.pets do
-		local entry = petModels[petId]
-		if entry and entry.hpLabel then
-			entry.hpLabel.Text = string.format("HP: %d/%d", pData.hp, pData.maxHp)
+	if data.pets then
+		for petId, pData in data.pets do
+			local entry = petModels[petId]
+			if entry then
+				entry.hp = pData.hp
+				entry.maxHp = pData.maxHp
+				if entry.filler and entry.maxHp > 0 then
+					entry.filler.Size = UDim2.new(entry.hp / entry.maxHp, 0, 1, 0)
+				end
+				if entry.countLabel then
+					entry.countLabel.Text = string.format("%d/%d", entry.hp, entry.maxHp)
+				end
+			end
 		end
 	end
 end
 
+-- Sets pet model transparency, recovery state, filler to 0 on death
 function CombatController.OnPetDefeated(petId)
 	local entry = petModels[petId]
 	if entry then
+		entry.isDefeated = true
+		entry.attackPhase = nil
+		entry.jumpProgress = 1
 		for _, part in entry.model:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Transparency = 0.7
 			end
 		end
-		if entry.hpLabel then
-			entry.hpLabel.Text = "DEFEATED"
+		if entry.filler then
+			entry.filler.Size = UDim2.new(0, 0, 1, 0)
+		end
+		if entry.countLabel then
+			entry.countLabel.Text = string.format("%d/%d", 0, entry.maxHp)
 		end
 	end
 end
 
+-- Restores pet model transparency, exits recovery state, filler to full on revive
 function CombatController.OnPetRevived(petId)
 	local entry = petModels[petId]
 	if entry then
+		entry.isDefeated = false
+		entry.attackPhase = nil
 		for _, part in entry.model:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Transparency = 0
 			end
 		end
-		if entry.hpLabel then
-			entry.hpLabel.Text = ""
+		if entry.filler then
+			entry.filler.Size = UDim2.new(1, 0, 1, 0)
+		end
+		if entry.countLabel then
+			entry.countLabel.Text = string.format("%d/%d", entry.maxHp, entry.maxHp)
 		end
 	end
 end
 
+-- Destroys enemy model immediately
 function CombatController.OnEnemyDefeated(enemyId)
 	local entry = enemyModels[enemyId]
 	if entry then
@@ -252,19 +549,27 @@ function CombatController.OnEnemyDefeated(enemyId)
 	end
 end
 
+-- Clears all models on character respawn
 player.CharacterAdded:Connect(function()
-	for petId in petModels do
-		local entry = petModels[petId]
-		if entry then
-			entry.model:Destroy()
-		end
+	for _, entry in petModels do
+		entry.model:Destroy()
+	end
+	for _, entry in enemyModels do
+		entry.model:Destroy()
 	end
 	local toRemove = {}
 	for petId in petModels do toRemove[#toRemove + 1] = petId end
 	for _, petId in toRemove do
 		petModels[petId] = nil
 	end
+	enemyModels = {}
 	CombatController.SyncEquippedPets()
 end)
+
+-- Пожизненные подписки на удалённые события атаки
+local petAttackRemote = ReplicatedStorage.Remotes:WaitForChild("PetAttack")
+local enemyAttackRemote = ReplicatedStorage.Remotes:WaitForChild("EnemyAttack")
+petAttackRemote.OnClientEvent:Connect(_onPetAttack)
+enemyAttackRemote.OnClientEvent:Connect(_onEnemyAttack)
 
 return CombatController

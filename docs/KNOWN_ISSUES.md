@@ -1,10 +1,24 @@
 # KNOWN_ISSUES.md — Bugs, Risks, and What NOT to Break
 
-## Recent Fixes (Session 2026-05-30)
+## Recent Fixes (Session 2026-05-30–2026-06-04)
 
 - **RarityCalculator inverse scaling (FIXED)**: Formula `weight / luckMultiplier` caused rare pets to become *rarer* as luck increased (e.g., Divine_Opal chance dropped from 0.00094% to 0.00004% at rebirthBonusLuck=30). Fixed to `weight * luckMultiplier`. Rare weights now scale up with luck, correctly increasing rare roll chances.
 
 - **PetEquipService auto-swap (ADDED)**: `Equip()` now replaces the highest-weight equipped pet when all slots are full, instead of silently failing.
+
+- **CombatService Heartbeat loop (REWRITTEN)**: Changed from `task.wait(1)` to `RunService.Heartbeat` with real dt. SyncCombatState now sends only Hp deltas + newSpawn positions (no full-state every tick). Per-entity attack state machine replaces per-tick combined damage.
+
+- **Pet attack damage model (REWRITTEN)**: Replaced per-tick `totalDamage` from all pets with per-pet cooldown-based attacks. Each pet picks nearest enemy within `PET_ATTACK_RANGE`, applies `petEntry.damage` once per `attackRate` seconds. Enemies focus one pet until it dies.
+
+- **Pet visual movement (REWRITTEN)**: Removed orbit system. Pets freely follow player. Detection range = 30 studs (approach enemy), attack range = 15 studs (start fight). Procedural jump arcs every 0.7s with state-dependent height.
+
+- **HP bars (REWRITTEN)**: Replaced inline BillboardGui TextLabel with `HealsBarGui` template (Fillbar.Filler + CountLabel). Cloned from `ReplicatedStorage.UI.Objects.HealsBarGui`, attached via `Adornee = model.BillboardAttachment`.
+
+- **CombatConfig (ADDED)**: New shared config file `ReplicatedStorage.CombatConfig` with `PET_DETECTION_RANGE=30` and `PET_ATTACK_RANGE=15`. Used by both CombatService and CombatController.
+
+- **PetAttack/EnemyAttack remotes (ADDED)**: Two new S>C RemoteEvents: `PetAttack{petId,enemyId}` and `EnemyAttack{enemyId,petId,targetPosition}` for attack animation triggers.
+
+- **PetConfig attackRate/attackRange (ADDED)**: Added `attackRate` (0.5–1.2s) and `attackRange` (25–32) fields to all 8 pets.
 
 ## Known Issues
 
@@ -34,7 +48,7 @@ RebirthController clones ConfirmationMenu from ReplicatedStorage each time. If t
 `lastRollTime` is an in-memory table. Server restart resets cooldown. Intentional for MVP.
 
 ### 8. EnemyKills only increments on pet damage kill
-`enemyKills` is incremented only when an enemy dies from pet damage (in `CombatService._processEnemyDamage`). Enemies that despawn on location change or server restart do not count as kills.
+`enemyKills` is incremented only when an enemy dies from pet damage (in `CombatService._handleEnemyKill`). Enemies that despawn on location change or server restart do not count as kills.
 
 ### 9. VisibilityController relies on `upgrades` dict (not individual `*Unlocked` fields)
 `shopUnlocked`, `indexUnlocked`, `rebirthUnlocked`, `rocksUnlocked`, `autoRollUnlocked` are set in DEFAULT_DATA and by UpgradeService, but `PlayerDataClient.get()` may return stale values after rebirth for newly added fields. Workaround: `VisibilityController` and `RollController.UpdateAutoRollVisibility()` read from the `upgrades` dict instead. The individual `*Unlocked` fields are still updated by the server but not used for client-side visibility decisions.
@@ -44,6 +58,21 @@ The auto-roll loop runs in `RollController._startAutoRoll()` using `task.spawn`.
 
 ### 11. Auto-roll loop doesn't handle server-side cooldown changes
 If `rollCooldown` changes during auto-roll (e.g., upgrade purchased), the loop reads `PlayerDataClient.get("rollCooldown")` each iteration but the cooldown is only read after a response is received. Cooldown reductions take effect on the next roll cycle.
+
+### 12. SyncCombatState still sends `pets` table with HP deltas (not used for attack animation)
+PetAttack/EnemyAttack remotes handle attack animation triggers, but SyncCombatState still includes `pets` table with HP data. This is fine — HP updates from SyncCombatState update the HP bar, while PetAttack triggers the visual jump animation. The two systems are complementary.
+
+### 13. Pet/enemy models move in air (no ground collision yet)
+All pet/enemy movement uses pure math arcs (Lerp + sin). On vertical terrain, entities float above or clip into ground. Ground collision (Raycast at jump boundaries) is planned for Stage 3.
+
+### 14. PetAttack and EnemyAttack remote events need manual creation in Studio
+These two RemoteEvents are referenced in code (`ReplicatedStorage.Remotes.PetAttack` / `EnemyAttack`) but must be created manually in Roblox Studio. Same for `CombatConfig` ModuleScript and `HealsBarGui` BillboardGui template. If absent, `WaitForChild` blocks indefinitely.
+
+### 15. HealsBarGui template must exist in Studio
+`CombatController.lua` uses `ReplicatedStorage.UI.Objects:WaitForChild("HealsBarGui")` at module top-level. If the template doesn't exist, the module will not load.
+
+### 16. Enemy targeting may briefly target player if all pets are dead and re-appear mid-cooldown
+When all pets are dead, enemy targets player. When a pet revives, server checks every "ready" phase (max 1s delay). Client switches immediately via `_findNearestAlivePet`. Acceptable for MVP.
 
 ## Risks — What NOT to Break
 
@@ -67,6 +96,8 @@ If `rollCooldown` changes during auto-roll (e.g., upgrade purchased), the loop r
 
 10. **PetEquipService now requires PetConfig at module scope** — `PetEquipService.lua` now has `local PetConfig = require(ReplicatedStorage.PetConfig)` at the top level. If PetConfig is renamed, moved, or fails to load, PetEquipService will not load and all equip/unequip operations will fail silently (no handler connected).
 
+11. **Combat module structure** — CombatService and CombatController are tightly coupled. Changes to the attack state machine fields (`attackPhase`, `attackState`, jump timing) must be mirrored in both files.
+
 ## Testing Notes
 - DataStore warning in Studio: expected when running unpublished. Game uses default data.
 - Roll button → check Output for pet result
@@ -78,3 +109,4 @@ If `rollCooldown` changes during auto-roll (e.g., upgrade purchased), the loop r
 - UI gating: buy `rocks_unlock` → Rocks appears in HUD. Buy `shop` → Shop appears in RightSide. After rebirth all reset to hidden.
 - Auto-swap: equip `maxEquipSlots` pets (default 1), then roll a new pet → if autoEquip triggers but slot is full, Equip() should replace the equipped pet with the new one. The replaced pet stays in inventory.
 - Luck scaling: rebirth with `rebirthBonusLuck=30` (via RebirthConfig or manual DataStore edit), then roll → Divine/Epic/Legendary pets should appear noticeably more often, not less.
+- Combat animation: watch pet behavior — should detect enemy at 30 studs (Move toward), approach to 3 studs (Fight hops), then jump attack (0.25s to enemy, damage, 0.25s back). Enemy should focus one pet until it dies, then switch. When all pets dead, enemy moves toward player.
